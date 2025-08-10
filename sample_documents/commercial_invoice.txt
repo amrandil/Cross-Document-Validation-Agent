@@ -1,0 +1,39 @@
+COMMERCIAL INVOICE
+
+Invoice Number: INV-2024-001234
+Invoice Date: 2024-01-15
+Currency: USD
+
+SUPPLIER (EXPORTER):
+TechExport GmbH
+Berliner Str. 123
+10117 Berlin, Germany
+Tax ID: DE123456789
+Phone: +49-30-12345678
+
+BUYER (IMPORTER):
+Electronics Import LLC  
+1500 Commerce Blvd
+Miami FL 33101, USA
+Tax ID: US987654321
+Phone: +1-305-555-0123
+
+DESCRIPTION OF GOODS:
+Item 1: Premium Smartphones with Accessories
+Quantity: 100 units
+Unit Price: $400.00
+Total Value: $40,000.00
+Weight: 2.5 kg per unit
+HS Code: 8517.12.00
+
+SHIPMENT DETAILS:
+Payment Terms: T/T 30 days
+Incoterms: FOB Hamburg
+Container: FCL 20ft
+Estimated Shipping Date: 2024-01-20
+
+TOTAL INVOICE VALUE: $40,000.00 USD
+
+Authorized Signature: Hans Mueller
+Date: 2024-01-15
+Position: Export Manager 

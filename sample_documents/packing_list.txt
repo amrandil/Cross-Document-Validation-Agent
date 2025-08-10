@@ -1,0 +1,39 @@
+PACKING LIST
+
+Packing List No: PL-2024-001234
+Date: 2024-01-16
+Related Invoice: INV-2024-001234
+
+SHIPPER:
+TechExport GmbH
+Berliner Str. 123
+10117 Berlin, Germany
+
+CONSIGNEE:
+Electronics Import LLC
+1500 Commerce Blvd
+Miami FL 33101, USA
+
+GOODS DESCRIPTION:
+Item: Basic Smartphones
+Quantity: 100 units
+Unit Weight: 0.4 kg
+Total Weight: 40.0 kg
+Dimensions per unit: 15cm x 8cm x 1cm
+Package Type: Individual retail boxes
+
+PACKAGE DETAILS:
+Total Packages: 5 cartons
+Package 1: 20 units, Weight: 8.0 kg
+Package 2: 20 units, Weight: 8.0 kg  
+Package 3: 20 units, Weight: 8.0 kg
+Package 4: 20 units, Weight: 8.0 kg
+Package 5: 20 units, Weight: 8.0 kg
+
+TOTAL GROSS WEIGHT: 45.0 kg (including packaging)
+TOTAL NET WEIGHT: 40.0 kg
+TOTAL VOLUME: 0.5 CBM
+
+Packed by: Maria Schmidt
+Date: 2024-01-16
+Quality Check: Passed 

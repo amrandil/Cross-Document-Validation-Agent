@@ -1,0 +1,56 @@
+BILL OF LADING
+
+B/L Number: BL-SH-2024-567890
+Date of Issue: 2024-01-18
+
+SHIPPER:
+TechExport Trading Co.
+Building A, Floor 15
+Pudong New Area, Shanghai 200120
+China
+Tel: +86-21-12345678
+
+CONSIGNEE:
+Electronics Import LLC
+1500 Commerce Blvd
+Miami FL 33101, USA
+
+NOTIFY PARTY:
+Same as Consignee
+
+VESSEL & VOYAGE:
+Vessel Name: MV Ocean Pioneer
+Voyage No: OP-2024-015
+IMO: 9123456
+
+PORT OF LOADING: Shanghai, China
+PORT OF DISCHARGE: Miami, USA
+PLACE OF DELIVERY: Miami, USA
+
+CONTAINER DETAILS:
+Container No: CSLU1234567
+Seal No: SH789456
+Container Type: 20ft Dry Container
+
+CARGO DESCRIPTION:
+Electronic Devices - Smartphones
+Number of Packages: 5 cartons
+Total Gross Weight: 45.0 kg
+Measurement: 0.5 CBM
+
+FREIGHT:
+Freight Prepaid: $2,500.00
+Payment Terms: Prepaid
+
+REMARKS:
+Cargo loaded in good order and condition.
+Clean on Board.
+Temperature controlled not required.
+
+Date of Loading: 2024-01-19
+ETD Shanghai: 2024-01-20
+ETA Miami: 2024-02-05
+
+Authorized by: Captain Zhang Wei
+Signature: [SIGNATURE]
+Date: 2024-01-18 

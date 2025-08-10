@@ -1,0 +1,45 @@
+# Build tools (install first)
+setuptools>=68.0.0
+wheel>=0.41.0
+
+# Core Framework  
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+streamlit==1.28.1
+
+# AI & ML - Pinned versions for Python 3.12 compatibility
+langchain==0.2.16
+langchain-openai==0.1.23
+langchain-community==0.2.16
+langchain-core==0.2.38
+openai==1.40.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+pydantic==2.8.2
+pydantic-settings==2.4.0
+
+# Document Processing
+python-multipart==0.0.6
+aiofiles==23.2.1
+PyPDF2==3.0.1
+pdfplumber==0.10.0
+pdf2image==1.16.3
+Pillow>=10.0.0
+
+# Utilities
+python-dotenv==1.0.0
+loguru==0.7.2
+httpx==0.25.2
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4 

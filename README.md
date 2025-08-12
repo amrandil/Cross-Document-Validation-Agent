@@ -24,7 +24,7 @@ OBSERVATION → THOUGHT → ACTION → OBSERVATION → Repeat → FINAL ANSWER
 - **Fraud Detection Tools**: Specialized tools for cross-document validation
 - **Document Processing**: LLM-based extraction and analysis
 - **API Backend**: FastAPI for fraud detection endpoints
-- **Frontend**: Streamlit interface for document upload and analysis
+- **Frontend**: Modern React/Next.js interface for document upload and analysis
 
 ## 📋 Document Types Supported
 
@@ -41,6 +41,7 @@ OBSERVATION → THOUGHT → ACTION → OBSERVATION → Repeat → FINAL ANSWER
 
 ### Prerequisites
 - Python 3.9+
+- Node.js 18+ and pnpm
 - OpenAI API key
 
 ### Installation
@@ -48,43 +49,72 @@ OBSERVATION → THOUGHT → ACTION → OBSERVATION → Repeat → FINAL ANSWER
 1. **Clone the repository**
 ```bash
 git clone <repository-url>
-cd crossDocument_validation_agent
+cd Cross-Document-Validation-Agent
 ```
 
-2. **Create virtual environment**
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-4. **Set up environment variables**
+2. **Set up environment variables**
 ```bash
 cp .env.example .env
 # Edit .env with your OpenAI API key
 ```
 
-5. **Run the backend**
+3. **Install backend dependencies**
 ```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+4. **Install frontend dependencies**
+```bash
+cd frontend
+pnpm install
+cd ..
+```
+
+### Running the Application
+
+#### Option 1: Development Mode (Recommended)
+
+1. **Start the backend server** (Terminal 1)
+```bash
+source venv/bin/activate
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-6. **Run the frontend** (in another terminal)
+2. **Start the React frontend** (Terminal 2)
 ```bash
-streamlit run frontend/app.py
+cd frontend
+pnpm dev
+```
+
+3. **Access the application**
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+#### Option 2: Using Docker
+
+```bash
+docker-compose up --build
 ```
 
 ## 🔧 Usage
+
+### Web Interface
+
+Access the React interface at `http://localhost:3000` to:
+- Upload document bundles with drag & drop
+- Configure analysis settings
+- View real-time agent analysis
+- Examine detailed fraud reports
+- Monitor API connection status
 
 ### API Endpoints
 
 #### Analyze Documents
 ```bash
-POST /api/v1/analyze
+POST /api/v1/analyze/upload
 ```
 
 Upload multiple documents and receive fraud analysis with:
@@ -95,35 +125,61 @@ Upload multiple documents and receive fraud analysis with:
 
 #### Health Check
 ```bash
-GET /health
+GET /api/v1/health
 ```
 
-### Web Interface
-
-Access the Streamlit interface at `http://localhost:8501` to:
-- Upload document bundles
-- View real-time agent analysis
-- Examine detailed fraud reports
+#### Agent Information
+```bash
+GET /api/v1/agent/info
+```
 
 ## 🛠️ Development
 
 ### Project Structure
 ```
-src/
-├── main.py                    # FastAPI application
-├── config.py                  # Configuration management
-├── api/                       # API endpoints
-├── agent/                     # ReAct agent implementation
-├── tools/                     # Fraud detection tools
-├── models/                    # Pydantic data models
-└── utils/                     # Utilities and helpers
+Cross-Document-Validation-Agent/
+├── src/                       # Backend source code
+│   ├── main.py               # FastAPI application
+│   ├── config.py             # Configuration management
+│   ├── api/                  # API endpoints
+│   ├── agent/                # ReAct agent implementation
+│   ├── tools/                # Fraud detection tools
+│   ├── models/               # Pydantic data models
+│   └── utils/                # Utilities and helpers
+├── frontend/                 # React/Next.js frontend
+│   ├── app/                  # Next.js app directory
+│   ├── components/           # React components
+│   ├── hooks/                # Custom React hooks
+│   ├── lib/                  # Utility libraries
+│   └── public/               # Static assets
+├── frontend_streamlit/       # Legacy Streamlit frontend
+├── sample_documents/         # Sample documents for testing
+└── testCases/                # Test case documents
 ```
 
-### Adding New Tools
+### Frontend Development
+
+The React frontend is built with:
+- **Next.js 15** - React framework
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Radix UI** - Accessible components
+- **React Hook Form** - Form handling
+- **React Dropzone** - File uploads
+
+### Backend Development
+
+#### Adding New Tools
 
 1. Create tool in `src/tools/`
 2. Register with agent in `src/agent/core.py`
 3. Update tool descriptions in `src/agent/prompts.py`
+
+#### API Development
+
+The backend provides RESTful APIs with automatic documentation:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
 ## 📊 Fraud Detection Capabilities
 
@@ -145,6 +201,45 @@ src/
 - Origin manipulation identification
 - Entity variation analysis
 - Fraud evidence synthesis
+
+## 🔍 Testing
+
+### Sample Documents
+
+Use the documents in `sample_documents/` for testing:
+- `commercial_invoice.txt`
+- `packing_list.txt`
+- `bill_of_lading.txt`
+- `certificate_of_origin.txt`
+
+### Test Cases
+
+Browse `testCases/` directory for real-world document examples from various companies.
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+1. **Backend won't start**
+   - Ensure virtual environment is activated
+   - Check OpenAI API key in `.env`
+   - Verify all dependencies are installed
+
+2. **Frontend won't start**
+   - Ensure Node.js 18+ is installed
+   - Run `pnpm install` in frontend directory
+   - Check if port 3000 is available
+
+3. **API connection fails**
+   - Verify backend is running on port 8000
+   - Check CORS settings in backend
+   - Use "Test API" button in frontend
+
+### Logs
+
+- **Backend logs**: Check terminal running uvicorn
+- **Frontend logs**: Check browser developer console
+- **Application logs**: Check `logs/` directory
 
 
 

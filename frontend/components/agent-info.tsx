@@ -1,13 +1,19 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Separator } from "@/components/ui/separator"
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 import {
   RefreshCw,
   Bot,
@@ -20,297 +26,310 @@ import {
   Zap,
   Database,
   AlertTriangle,
-} from "lucide-react"
-import { useAgentInfo } from "@/hooks/use-api"
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { useAgentInfo } from "@/hooks/use-api";
 
 interface AgentCapability {
-  name: string
-  description: string
-  icon: React.ReactNode
+  name: string;
+  description: string;
+  icon: React.ReactNode;
 }
 
 export function AgentInfo() {
-  const { data: agentInfo, loading, error, fetchAgentInfo } = useAgentInfo()
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { data: agentInfo, loading, error, fetchAgentInfo } = useAgentInfo();
 
   useEffect(() => {
     const loadAgentInfo = async () => {
       try {
-        await fetchAgentInfo()
+        await fetchAgentInfo();
       } catch (err) {
-        console.error("Failed to load agent info on mount:", err)
+        console.error("Failed to load agent info on mount:", err);
       }
-    }
-    loadAgentInfo()
-  }, [fetchAgentInfo])
+    };
+    loadAgentInfo();
+  }, [fetchAgentInfo]);
 
   const getCapabilityIcon = (capability: string) => {
-    const lowerCapability = capability.toLowerCase()
-    if (lowerCapability.includes("document")) return <FileText className="h-4 w-4" />
-    if (lowerCapability.includes("fraud")) return <Shield className="h-4 w-4" />
-    if (lowerCapability.includes("analysis")) return <Zap className="h-4 w-4" />
-    if (lowerCapability.includes("data")) return <Database className="h-4 w-4" />
-    return <Tool className="h-4 w-4" />
-  }
+    const lowerCapability = capability.toLowerCase();
+    if (lowerCapability.includes("document"))
+      return <FileText className="h-3 w-3" />;
+    if (lowerCapability.includes("fraud"))
+      return <Shield className="h-3 w-3" />;
+    if (lowerCapability.includes("analysis"))
+      return <Zap className="h-3 w-3" />;
+    if (lowerCapability.includes("data"))
+      return <Database className="h-3 w-3" />;
+    return <Tool className="h-3 w-3" />;
+  };
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          <div className="space-y-2">
+      <Alert variant="destructive" className="text-xs">
+        <AlertCircle className="h-3 w-3" />
+        <AlertDescription className="text-xs">
+          <div className="space-y-1">
             <p>{error}</p>
-            {error.includes("Backend server") && (
-              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                <p>
-                  <strong>To fix this:</strong>
-                </p>
-                <ol className="list-decimal list-inside space-y-1">
-                  <li>Start your LangChain backend server</li>
-                  <li>Ensure it's running on http://localhost:8000</li>
-                  <li>Click the retry button below</li>
-                </ol>
-              </div>
-            )}
-            <Button onClick={fetchAgentInfo} variant="outline" size="sm" className="ml-0 mt-2 bg-transparent">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry Connection
+            <Button
+              onClick={fetchAgentInfo}
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Retry
             </Button>
           </div>
         </AlertDescription>
       </Alert>
-    )
+    );
   }
 
   if (!agentInfo && !loading) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Bot className="h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Agent Information</h3>
-          <p className="text-gray-500 text-center mb-4">Click refresh to load agent capabilities and information.</p>
-          <Button onClick={fetchAgentInfo} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Load Agent Info
+      <Card className="text-xs">
+        <CardContent className="flex flex-col items-center justify-center py-4">
+          <Bot className="h-6 w-6 text-gray-400 mb-2" />
+          <h3 className="text-sm font-medium text-gray-900 mb-1">
+            No Agent Info
+          </h3>
+          <Button
+            onClick={fetchAgentInfo}
+            variant="outline"
+            size="sm"
+            className="h-6 text-xs"
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Load Info
           </Button>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with Refresh */}
+    <div className="space-y-3">
+      {/* Expandable Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-microclear-blue">Agent Information</h2>
-          <p className="text-gray-600">Fraud detection agent capabilities and configuration</p>
-        </div>
-        <Button onClick={fetchAgentInfo} disabled={loading} variant="outline" size="sm">
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+        <Button
+          onClick={() => setIsExpanded(!isExpanded)}
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 hover:bg-gray-100"
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3 w-3 mr-1" />
+          ) : (
+            <ChevronRight className="h-3 w-3 mr-1" />
+          )}
+          <span className="text-xs text-gray-700">Agent Overview</span>
         </Button>
+        <div className="flex items-center space-x-2">
+          <Button
+            onClick={fetchAgentInfo}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="h-6 w-6 p-0"
+          >
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+          {agentInfo && (
+            <Badge className="bg-green-100 text-green-800 border-green-200 text-xs h-5">
+              Active
+            </Badge>
+          )}
+        </div>
       </div>
 
       {loading && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-8">
-            <RefreshCw className="h-6 w-6 animate-spin text-microclear-blue mr-2" />
-            <span>Loading agent information...</span>
+        <Card className="text-xs">
+          <CardContent className="flex items-center justify-center py-3">
+            <RefreshCw className="h-4 w-4 animate-spin text-microclear-blue mr-2" />
+            <span>Loading...</span>
           </CardContent>
         </Card>
       )}
 
-      {agentInfo && (
-        <div className="space-y-6">
-          {/* Agent Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-microclear-blue">
-                <Bot className="h-5 w-5 mr-2" />
-                Agent Overview
+      {agentInfo && isExpanded && (
+        <div className="space-y-3">
+          {/* Compact Agent Overview */}
+          <Card className="text-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-sm">
+                <Bot className="h-4 w-4 mr-1" />
+                Overview
               </CardTitle>
-              <CardDescription>Core agent specifications and capabilities</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <Bot className="h-8 w-8 text-microclear-blue mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-1">Agent Type</p>
-                  <p className="font-semibold text-gray-900">
-                    {agentInfo.agent_type?.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase()) ||
-                      "Multi-Document Fraud Detection"}
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-center p-2 bg-blue-50 rounded border border-blue-200">
+                  <Tool className="h-4 w-4 text-microclear-blue mx-auto mb-1" />
+                  <p className="text-xs text-gray-600">Tools</p>
+                  <p className="font-semibold text-xs">
+                    {agentInfo.tools_count || agentInfo.tools?.length || 0}
                   </p>
                 </div>
-
-                <div className="text-center p-4 bg-orange-50 rounded-lg border border-orange-200">
-                  <Tool className="h-8 w-8 text-microclear-orange mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-1">Available Tools</p>
-                  <p className="font-semibold text-gray-900">{agentInfo.tools_count || agentInfo.tools?.length || 0}</p>
-                </div>
-
-                <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                  <FileText className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-1">Document Types</p>
-                  <p className="font-semibold text-gray-900">
+                <div className="text-center p-2 bg-green-50 rounded border border-green-200">
+                  <FileText className="h-4 w-4 text-green-600 mx-auto mb-1" />
+                  <p className="text-xs text-gray-600">Docs</p>
+                  <p className="font-semibold text-xs">
                     {agentInfo.supported_document_types?.length || "Multiple"}
                   </p>
                 </div>
-
-                <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
-                  <Shield className="h-8 w-8 text-red-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-1">Fraud Types</p>
-                  <p className="font-semibold text-gray-900">{agentInfo.fraud_types_detected?.length || "Multiple"}</p>
-                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Document Types Support */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-microclear-blue">
-                <FileText className="h-5 w-5 mr-2" />
-                Supported Document Types
+          {/* Compact Document Types */}
+          <Card className="text-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-sm">
+                <FileText className="h-4 w-4 mr-1" />
+                Document Types
               </CardTitle>
-              <CardDescription>Document formats and types that can be analyzed for fraud detection</CardDescription>
             </CardHeader>
             <CardContent>
-              {agentInfo.supported_document_types && agentInfo.supported_document_types.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {agentInfo.supported_document_types.map((type: string) => (
-                    <div key={type} className="flex items-center p-3 bg-gray-50 rounded-lg border">
-                      <FileText className="h-4 w-4 text-microclear-blue mr-2" />
-                      <span className="text-sm font-medium">
-                        {type.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                      </span>
+              {agentInfo.supported_document_types &&
+              agentInfo.supported_document_types.length > 0 ? (
+                <div className="space-y-1">
+                  {agentInfo.supported_document_types
+                    .slice(0, 3)
+                    .map((type: string) => (
+                      <div
+                        key={type}
+                        className="flex items-center p-1 bg-gray-50 rounded text-xs"
+                      >
+                        <FileText className="h-3 w-3 text-microclear-blue mr-1" />
+                        <span className="truncate">
+                          {type
+                            .replace("_", " ")
+                            .replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        </span>
+                      </div>
+                    ))}
+                  {agentInfo.supported_document_types.length > 3 && (
+                    <div className="text-xs text-gray-500 text-center">
+                      +{agentInfo.supported_document_types.length - 3} more
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-500">
-                    Document type information not available. The agent supports common customs document formats.
+                <div className="text-center py-2">
+                  <FileText className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500">
+                    Multiple formats supported
                   </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Fraud Detection Capabilities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-microclear-blue">
-                <Shield className="h-5 w-5 mr-2" />
-                Fraud Detection Capabilities
+          {/* Compact Fraud Types */}
+          <Card className="text-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-sm">
+                <Shield className="h-4 w-4 mr-1" />
+                Fraud Detection
               </CardTitle>
-              <CardDescription>Types of fraud patterns and schemes the agent can identify</CardDescription>
             </CardHeader>
             <CardContent>
-              {agentInfo.fraud_types_detected && agentInfo.fraud_types_detected.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {agentInfo.fraud_types_detected.map((type: string) => (
-                    <div key={type} className="flex items-center p-3 bg-red-50 rounded-lg border border-red-200">
-                      <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
-                      <span className="text-sm font-medium text-red-800">
-                        {type.replace("_", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                      </span>
+              {agentInfo.fraud_types_detected &&
+              agentInfo.fraud_types_detected.length > 0 ? (
+                <div className="space-y-1">
+                  {agentInfo.fraud_types_detected
+                    .slice(0, 3)
+                    .map((type: string) => (
+                      <div
+                        key={type}
+                        className="flex items-center p-1 bg-red-50 rounded border border-red-200 text-xs"
+                      >
+                        <AlertTriangle className="h-3 w-3 text-red-600 mr-1" />
+                        <span className="truncate text-red-800">
+                          {type
+                            .replace("_", " ")
+                            .replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        </span>
+                      </div>
+                    ))}
+                  {agentInfo.fraud_types_detected.length > 3 && (
+                    <div className="text-xs text-gray-500 text-center">
+                      +{agentInfo.fraud_types_detected.length - 3} more
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <Shield className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-500">
-                    Fraud type information not available. The agent can detect various customs fraud patterns.
+                <div className="text-center py-2">
+                  <Shield className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500">
+                    Multiple patterns detected
                   </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Available Tools */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-microclear-blue">
-                <Tool className="h-5 w-5 mr-2" />
-                Available Analysis Tools
+          {/* Compact Tools */}
+          <Card className="text-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-sm">
+                <Tool className="h-4 w-4 mr-1" />
+                Analysis Tools
               </CardTitle>
-              <CardDescription>Tools and capabilities available to the fraud detection agent</CardDescription>
             </CardHeader>
             <CardContent>
               {agentInfo.tools && agentInfo.tools.length > 0 ? (
-                <div className="space-y-3">
-                  {agentInfo.tools.map((tool: string, index: number) => (
-                    <div key={index} className="flex items-center p-3 bg-gray-50 rounded-lg border hover:bg-gray-100">
-                      {getCapabilityIcon(tool)}
-                      <div className="ml-3">
-                        <span className="text-sm font-medium text-gray-900">{tool}</span>
+                <div className="space-y-1">
+                  {agentInfo.tools
+                    .slice(0, 4)
+                    .map((tool: string, index: number) => (
+                      <div
+                        key={index}
+                        className="flex items-center p-1 bg-gray-50 rounded text-xs"
+                      >
+                        {getCapabilityIcon(tool)}
+                        <span className="ml-1 truncate">{tool}</span>
                       </div>
+                    ))}
+                  {agentInfo.tools.length > 4 && (
+                    <div className="text-xs text-gray-500 text-center">
+                      +{agentInfo.tools.length - 4} more tools
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <Tool className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-500">Tool information not available from the agent.</p>
+                <div className="text-center py-2">
+                  <Tool className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500">
+                    Multiple tools available
+                  </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Agent Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-microclear-blue">
-                <CheckCircle className="h-5 w-5 mr-2" />
-                Agent Status
+          {/* Compact Status */}
+          <Card className="text-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center text-sm">
+                <CheckCircle className="h-4 w-4 mr-1" />
+                Status
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="flex items-center space-x-3">
-                  <CheckCircle className="h-6 w-6 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-800">Agent Online</p>
-                    <p className="text-sm text-green-600">Ready to analyze documents for fraud detection</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800 border-green-200">Active</Badge>
-              </div>
-
-              <Separator className="my-4" />
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="flex items-center p-2 bg-green-50 rounded border border-green-200">
+                <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
                 <div>
-                  <p className="text-gray-600">Last Updated</p>
-                  <p className="font-medium">{new Date().toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">API Version</p>
-                  <p className="font-medium">v1</p>
+                  <p className="font-medium text-green-800 text-xs">Online</p>
+                  <p className="text-xs text-green-600">Ready for analysis</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Raw Agent Data (for debugging) */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center text-gray-600">
-                <Info className="h-5 w-5 mr-2" />
-                Raw Agent Data
-              </CardTitle>
-              <CardDescription>Complete agent information for debugging purposes</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-x-auto max-h-64">
-                {JSON.stringify(agentInfo, null, 2)}
-              </pre>
             </CardContent>
           </Card>
         </div>
       )}
     </div>
-  )
+  );
 }

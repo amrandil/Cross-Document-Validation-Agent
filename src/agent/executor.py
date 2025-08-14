@@ -1,5 +1,7 @@
 """Executor wrapper for the fraud detection agent."""
 
+import asyncio
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -54,6 +56,45 @@ class FraudDetectionExecutor:
                 details={"bundle_id": bundle.bundle_id, "error": str(e)}
             )
 
+    async def execute_fraud_analysis_stream(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None, stream_queue: asyncio.Queue = None):
+        """Execute fraud analysis with real-time streaming updates.
+
+        Args:
+            bundle: Document bundle to analyze
+            options: Optional analysis options
+            stream_queue: Queue for sending streaming updates
+
+        Returns:
+            AgentExecution: Complete execution trace with results
+        """
+        try:
+            logger.info(
+                f"Starting streaming fraud analysis for bundle {bundle.bundle_id}")
+
+            # Validate bundle
+            self._validate_bundle(bundle)
+
+            # Execute streaming analysis using agent
+            execution = await self.agent.analyze_documents_stream(bundle, options, stream_queue)
+
+            logger.info(
+                f"Streaming fraud analysis completed: {execution.execution_id}")
+            return execution
+
+        except Exception as e:
+            logger.error(f"Streaming fraud analysis failed: {str(e)}")
+            if stream_queue:
+                await stream_queue.put({
+                    "type": "error",
+                    "message": f"Analysis failed: {str(e)}",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            raise AgentExecutionError(
+                f"Failed to execute streaming fraud analysis: {str(e)}",
+                execution_id=None,
+                details={"bundle_id": bundle.bundle_id, "error": str(e)}
+            )
+
     def _validate_bundle(self, bundle: DocumentBundle):
         """Validate document bundle before analysis."""
         if not bundle.documents:
@@ -78,23 +119,25 @@ class FraudDetectionExecutor:
 
     def get_agent_info(self) -> Dict[str, Any]:
         """Get information about the agent and its capabilities."""
+        # Collect LLMs from known components to avoid frontend hardcoding
+        from ..utils.vision_pdf_processor import VisionPDFProcessor
+        vision_info = VisionPDFProcessor().get_processor_info()
+
+        llms_used = []
+        if vision_info.get("vision_model"):
+            llms_used.append({
+                "name": vision_info["vision_model"],
+                "role": "Vision PDF Extraction"
+            })
+        if vision_info.get("summary_model"):
+            llms_used.append({
+                "name": vision_info["summary_model"],
+                "role": "Document Summary"
+            })
+
         return {
             "agent_type": "FraudDetectionAgent",
             "tools_count": len(self.agent.tools),
             "tools": [tool.name for tool in self.agent.tools],
-            "supported_document_types": [
-                "commercial_invoice",
-                "packing_list",
-                "bill_of_lading",
-                "certificate_of_origin",
-                "customs_declaration"
-            ],
-            "fraud_types_detected": [
-                "valuation_fraud",
-                "quantity_manipulation",
-                "weight_manipulation",
-                "origin_manipulation",
-                "product_substitution",
-                "entity_misrepresentation"
-            ]
+            "llms_used": llms_used,
         }

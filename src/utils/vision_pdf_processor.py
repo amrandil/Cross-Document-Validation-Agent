@@ -19,9 +19,13 @@ class VisionPDFProcessor:
     """Utility class for extracting comprehensive content from PDF files using vision-enabled LLMs."""
 
     def __init__(self):
-        # Use GPT-4 Vision for comprehensive document analysis
+        # Centralize model names so we can report them dynamically
+        self.vision_model_name = "gpt-4o"
+        self.summary_model_name = "gpt-4o"
+
+        # Vision LLM for comprehensive document analysis
         self.vision_llm = ChatOpenAI(
-            model="gpt-4-vision-preview",
+            model=self.vision_model_name,
             temperature=0.1,  # Low temperature for consistent extraction
             max_tokens=4096,  # Allow for comprehensive extraction
             api_key=settings.openai_api_key
@@ -286,9 +290,9 @@ Original extracted content:
 """
 
         try:
-            # Use text-based GPT-4 for summary generation (more cost-effective)
+            # Use text-based LLM for summary generation
             summary_llm = ChatOpenAI(
-                model="gpt-4-turbo-preview",
+                model=self.summary_model_name,
                 temperature=0.1,
                 api_key=settings.openai_api_key
             )
@@ -332,8 +336,8 @@ Note: Summary generation failed, showing detailed extraction only
         """Get information about the vision processor."""
         return {
             "processor_type": "Vision LLM PDF Processor",
-            "vision_model": "gpt-4-vision-preview",
-            "summary_model": "gpt-4-turbo-preview",
+            "vision_model": self.vision_model_name,
+            "summary_model": self.summary_model_name,
             "capabilities": [
                 "PDF to image conversion",
                 "Vision-based text extraction",

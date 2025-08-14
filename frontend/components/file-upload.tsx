@@ -1,29 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Upload,
-  File,
-  X,
-  ChevronDown,
-  AlertCircle,
-  CheckCircle,
-} from "lucide-react";
+import { Upload, File, X, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocumentAnalysis } from "@/hooks/use-api";
+import RealTimeAnalysis from "./real-time-analysis";
 import type { AnalysisOptions } from "@/lib/api";
 
 interface FileUploadProps {
@@ -38,6 +22,11 @@ interface UploadedFile {
   id: string;
 }
 
+type PreviewData =
+  | { kind: "pdf"; url: string }
+  | { kind: "text"; text: string }
+  | { kind: "unsupported" };
+
 export function FileUpload({
   onAnalysisStart,
   onAnalysisComplete,
@@ -45,22 +34,79 @@ export function FileUpload({
   isAnalyzing,
 }: FileUploadProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [bundleId, setBundleId] = useState("");
+  const [filePreviews, setFilePreviews] = useState<Record<string, PreviewData>>(
+    {}
+  );
+  const [startSignal, setStartSignal] = useState(0);
+  // bundleId removed per request
   const [analysisOptions, setAnalysisOptions] = useState<AnalysisOptions>({
     confidence_threshold: 0.7,
     detailed_analysis: true,
   });
   const [showFileDetails, setShowFileDetails] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   const { analyzeDocuments, error: apiError } = useDocumentAnalysis();
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map((file) => ({
-      file,
-      id: Math.random().toString(36).substr(2, 9),
-    }));
-    setUploadedFiles((prev) => [...prev, ...newFiles]);
+  const generatePreview = useCallback((id: string, file: File) => {
+    if (
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      const url = URL.createObjectURL(file);
+      setFilePreviews((prev) => ({ ...prev, [id]: { kind: "pdf", url } }));
+      return;
+    }
+
+    if (
+      file.type.startsWith("text/") ||
+      file.name.toLowerCase().endsWith(".txt") ||
+      file.name.toLowerCase().endsWith(".csv")
+    ) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = typeof reader.result === "string" ? reader.result : "";
+        // Limit to first ~2000 chars for preview
+        setFilePreviews((prev) => ({
+          ...prev,
+          [id]: { kind: "text", text: text.slice(0, 2000) },
+        }));
+      };
+      reader.onerror = () => {
+        setFilePreviews((prev) => ({ ...prev, [id]: { kind: "unsupported" } }));
+      };
+      reader.readAsText(file);
+      return;
+    }
+
+    // DOCX and others
+    setFilePreviews((prev) => ({ ...prev, [id]: { kind: "unsupported" } }));
   }, []);
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const newFiles = acceptedFiles.map((file) => ({
+        file,
+        id: Math.random().toString(36).substr(2, 9),
+      }));
+      setUploadedFiles((prev) => {
+        const updated = [...prev, ...newFiles];
+        // generate previews for the new ones
+        newFiles.forEach(({ id, file }) => generatePreview(id, file));
+        return updated;
+      });
+    },
+    [generatePreview]
+  );
+
+  // Cleanup blob URLs on unmount or when files are removed
+  useEffect(() => {
+    return () => {
+      Object.values(filePreviews).forEach((p) => {
+        if (p.kind === "pdf") URL.revokeObjectURL(p.url);
+      });
+    };
+  }, [filePreviews]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -75,6 +121,15 @@ export function FileUpload({
   });
 
   const removeFile = (id: string) => {
+    const preview = filePreviews[id];
+    if (preview && preview.kind === "pdf") {
+      URL.revokeObjectURL(preview.url);
+    }
+    setFilePreviews((prev) => {
+      const clone = { ...prev };
+      delete clone[id];
+      return clone;
+    });
     setUploadedFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
@@ -88,23 +143,13 @@ export function FileUpload({
     );
   };
 
-  const handleAnalyzeDocuments = async () => {
-    if (uploadedFiles.length === 0) {
-      return;
-    }
+  const handleRealTimeComplete = (result: any) => {
+    setAnalysisResult(result);
+    onAnalysisComplete(result);
+  };
 
-    onAnalysisStart();
-
-    try {
-      const result = await analyzeDocuments({
-        files: uploadedFiles.map(({ file }) => file),
-        bundle_id: bundleId.trim() || undefined,
-        options: analysisOptions,
-      });
-      onAnalysisComplete(result);
-    } catch (error) {
-      onAnalysisError();
-    }
+  const handleRealTimeError = (error: string) => {
+    onAnalysisError();
   };
 
   return (
@@ -113,104 +158,105 @@ export function FileUpload({
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+          "border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors",
           isDragActive
             ? "border-microclear-blue bg-blue-50"
             : "border-gray-300 hover:border-microclear-blue hover:bg-gray-50"
         )}
       >
         <input {...getInputProps()} />
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        {isDragActive ? (
-          <p className="text-microclear-blue font-medium">
-            Drop the files here...
-          </p>
-        ) : (
-          <div>
-            <p className="text-lg font-medium text-gray-900 mb-2">
-              Choose document files or drag and drop
-            </p>
-            <p className="text-sm text-gray-500">
-              Supports PDF, TXT, DOCX, CSV files for customs document analysis
-            </p>
+        <div className="text-center py-2">
+          <Upload className="h-8 w-8 text-gray-400 inline-block mr-2" />
+          <span className="text-sm text-gray-600">
+            Click or drag files here (PDF, TXT, DOCX, CSV)
+          </span>
+        </div>
+
+        {uploadedFiles.length > 0 && (
+          <div className="mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {uploadedFiles.map(({ file, id }) => {
+                const preview = filePreviews[id];
+                return (
+                  <div key={id} className="p-2 bg-gray-50 rounded-lg border">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <File className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p
+                            className="font-medium text-sm truncate max-w-[12rem]"
+                            title={file.name}
+                          >
+                            {file.name}
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            {formatFileSize(file.size)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFile(id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div>
+                      {preview?.kind === "pdf" && (
+                        <iframe
+                          src={preview.url}
+                          className="w-full h-32 rounded border bg-white"
+                          title={`preview-${id}`}
+                        />
+                      )}
+                      {preview?.kind === "text" && (
+                        <pre className="w-full max-h-32 overflow-auto text-[10px] bg-white rounded border p-1 whitespace-pre-wrap">
+                          {preview.text}
+                        </pre>
+                      )}
+                      {preview?.kind === "unsupported" && (
+                        <div className="text-xs text-gray-600">
+                          Preview not available
+                        </div>
+                      )}
+                      {!preview && (
+                        <div className="text-xs text-gray-500">
+                          Generating preview...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Uploaded Files */}
-      {uploadedFiles.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                <span className="font-medium">
-                  {uploadedFiles.length} files uploaded
-                </span>
-              </div>
-              <Collapsible
-                open={showFileDetails}
-                onOpenChange={setShowFileDetails}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    File Details
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 ml-2 transition-transform",
-                        showFileDetails && "rotate-180"
-                      )}
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <div className="space-y-2">
-                    {uploadedFiles.map(({ file, id }) => (
-                      <div
-                        key={id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <File className="h-5 w-5 text-gray-400" />
-                          <div>
-                            <p className="font-medium text-sm">{file.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {formatFileSize(file.size)}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFile(id)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Bundle ID Input */}
-      <div className="space-y-2">
-        <Label htmlFor="bundle-id">Bundle ID (optional)</Label>
-        <Input
-          id="bundle-id"
-          placeholder="Leave empty to auto-generate"
-          value={bundleId}
-          onChange={(e) => setBundleId(e.target.value)}
-          className="max-w-md"
-        />
-        <p className="text-sm text-gray-500">
-          Unique identifier for this document bundle
-        </p>
+      {/* Start Analysis button under upload box */}
+      <div className="flex justify-center">
+        <Button
+          onClick={() => {
+            // noop here; RealTimeAnalysis will be triggered by startSignal below
+            setStartSignal((s) => s + 1);
+          }}
+          disabled={uploadedFiles.length < 2}
+          className={cn(
+            "px-6",
+            uploadedFiles.length < 2
+              ? "bg-gray-300 text-gray-600"
+              : "bg-blue-600 hover:bg-blue-700 text-white"
+          )}
+        >
+          Start Analysis
+        </Button>
       </div>
+
+      {/* Uploaded Files section removed; previews will render inside the dropzone */}
+
+      {/* Bundle ID removed per request */}
 
       {/* Error Display */}
       {apiError && (
@@ -220,43 +266,15 @@ export function FileUpload({
         </Alert>
       )}
 
-      {/* Analysis Button */}
-      <div className="flex justify-center">
-        <Button
-          onClick={handleAnalyzeDocuments}
-          disabled={uploadedFiles.length === 0 || isAnalyzing}
-          className="bg-microclear-blue hover:bg-microclear-blue-light text-white px-8 py-2"
-          size="lg"
-        >
-          {isAnalyzing ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Analyzing Documents...
-            </>
-          ) : (
-            "Analyze Documents"
-          )}
-        </Button>
-      </div>
-
-      {/* Analysis Progress */}
-      {isAnalyzing && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  Analyzing documents for fraud indicators...
-                </span>
-                <Badge variant="secondary">Processing</Badge>
-              </div>
-              <Progress value={undefined} className="w-full" />
-              <p className="text-xs text-gray-500 text-center">
-                This may take up to 10 minutes depending on document complexity
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Real-Time Analysis Component */}
+      {uploadedFiles.length > 0 && (
+        <RealTimeAnalysis
+          files={uploadedFiles.map(({ file }) => file)}
+          options={analysisOptions}
+          onComplete={handleRealTimeComplete}
+          onError={handleRealTimeError}
+          startSignal={startSignal}
+        />
       )}
     </div>
   );

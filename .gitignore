@@ -144,6 +144,7 @@ ehthumbs.db
 Desktop.ini
 
 # Application specific
+log/
 logs/
 *.log
 temp/

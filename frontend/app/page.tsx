@@ -100,8 +100,9 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Multi-Document Fraud Detection Agent
+          <h1 className="text-4xl font-bold mb-4">
+            <span className="text-[#2256AC]">Multi-Document</span>{" "}
+            <span className="text-[#EC8011]">Fraud Detection Agent</span>
           </h1>
           <p className="text-lg text-microclear-gray max-w-3xl mx-auto">
             Advanced AI-powered analysis for customs fraud detection with

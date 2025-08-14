@@ -1,6 +1,8 @@
 """Core ReAct fraud detection agent implementation."""
 
 import uuid
+import asyncio
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 # Remove unused langchain agents imports - we use custom ReAct implementation
@@ -87,6 +89,384 @@ class FraudDetectionAgent:
             logger.error(f"Error in fraud analysis: {str(e)}")
             memory.agent_execution.fail_execution(str(e))
             return memory.get_agent_execution()
+
+    async def analyze_documents_stream(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None, stream_queue: asyncio.Queue = None) -> AgentExecution:
+        """Analyze a document bundle for fraud with real-time streaming updates."""
+
+        execution_id = str(uuid.uuid4())
+        options = options or {}
+
+        # Initialize memory and tracking
+        memory = FraudDetectionMemory(execution_id, bundle.bundle_id)
+
+        # Define phases for progress tracking
+        phases = [
+            ("initial_observation", "Initial Observation"),
+            ("document_extraction", "Document Extraction"),
+            ("systematic_validation", "Systematic Validation"),
+            ("pattern_detection", "Pattern Detection"),
+            ("evidence_synthesis", "Evidence Synthesis")
+        ]
+
+        try:
+            await self._send_stream_update(stream_queue, {
+                "type": "analysis_started",
+                "execution_id": execution_id,
+                "bundle_id": bundle.bundle_id,
+                "total_phases": len(phases),
+                "message": "Starting fraud analysis..."
+            })
+
+            logger.info(
+                f"Starting streaming fraud analysis for bundle {bundle.bundle_id}")
+
+            # Phase 1: Initial Observation
+            await self._send_phase_update(stream_queue, 1, "initial_observation", "Initial Observation", "Starting environmental assessment...")
+            memory.set_phase("initial_observation")
+
+            # Add detailed Phase 1 progress
+            await self._send_step_update(stream_queue, memory, "THOUGHT", "Starting initial observation phase - assessing document bundle and environment...")
+
+            initial_observation = self._conduct_initial_observation(bundle)
+            memory.add_observation(initial_observation)
+            await self._send_step_update(stream_queue, memory, "OBSERVATION", initial_observation)
+
+            # Add Phase 1 completion message
+            await self._send_step_update(stream_queue, memory, "THOUGHT", "Initial observation phase completed - environment assessed and ready for document extraction.")
+
+            # Phase 2: Document Extraction
+            await self._send_phase_update(stream_queue, 2, "document_extraction", "Document Extraction", "Extracting structured data from documents...")
+            memory.set_phase("document_extraction")
+
+            # Add detailed Phase 2 progress
+            await self._send_step_update(stream_queue, memory, "THOUGHT", f"Starting document extraction phase - processing {len(bundle.documents)} documents...")
+
+            extracted_data = await self._extract_document_data_stream(bundle, memory, stream_queue)
+            memory.update_context("extracted_data", extracted_data)
+
+            # Phase 3: Systematic Validation
+            await self._send_phase_update(stream_queue, 3, "systematic_validation", "Systematic Validation", "Performing cross-document validations...")
+            memory.set_phase("systematic_validation")
+            validation_results = await self._conduct_systematic_validation_stream(
+                bundle, memory, extracted_data, stream_queue)
+
+            # Phase 4: Advanced Pattern Detection
+            await self._send_phase_update(stream_queue, 4, "pattern_detection", "Pattern Detection", "Detecting sophisticated fraud patterns...")
+            memory.set_phase("pattern_detection")
+            pattern_results = await self._conduct_pattern_detection_stream(
+                bundle, memory, extracted_data, validation_results, stream_queue)
+
+            # Phase 5: Evidence Synthesis
+            await self._send_phase_update(stream_queue, 5, "evidence_synthesis", "Evidence Synthesis", "Synthesizing evidence into final assessment...")
+            memory.set_phase("evidence_synthesis")
+            fraud_analysis = await self._synthesize_evidence_stream(
+                bundle, memory, extracted_data, validation_results + pattern_results, stream_queue)
+
+            # Complete the execution
+            memory.agent_execution.complete_execution(fraud_analysis)
+
+            await self._send_stream_update(stream_queue, {
+                "type": "analysis_completed",
+                "execution_id": execution_id,
+                "bundle_id": bundle.bundle_id,
+                "total_steps": len(memory.agent_execution.steps),
+                "fraud_detected": fraud_analysis.fraud_detected,
+                "risk_level": fraud_analysis.risk_level,
+                "message": "Analysis completed successfully"
+            })
+
+            logger.info(
+                f"Completed streaming fraud analysis for bundle {bundle.bundle_id}")
+            return memory.get_agent_execution()
+
+        except Exception as e:
+            logger.error(f"Error in streaming fraud analysis: {str(e)}")
+            memory.agent_execution.fail_execution(str(e))
+
+            await self._send_stream_update(stream_queue, {
+                "type": "analysis_error",
+                "execution_id": execution_id,
+                "bundle_id": bundle.bundle_id,
+                "error": str(e),
+                "message": "Analysis failed"
+            })
+
+            return memory.get_agent_execution()
+
+    async def _send_stream_update(self, stream_queue: asyncio.Queue, update: Dict[str, Any]):
+        """Send an update to the stream queue."""
+        if stream_queue:
+            update["timestamp"] = datetime.utcnow().isoformat()
+            await stream_queue.put(update)
+
+    async def _send_phase_update(self, stream_queue: asyncio.Queue, phase_number: int, phase_id: str, phase_name: str, message: str):
+        """Send a phase update to the stream."""
+        await self._send_stream_update(stream_queue, {
+            "type": "phase_started",
+            "phase_number": phase_number,
+            "phase_id": phase_id,
+            "phase_name": phase_name,
+            "message": message
+        })
+
+    async def _send_step_update(self, stream_queue: asyncio.Queue, memory: FraudDetectionMemory, step_type: str, content: str):
+        """Send a step update to the stream."""
+        step = memory.add_step(step_type, content)
+        await self._send_stream_update(stream_queue, {
+            "type": "step_completed",
+            "step_number": step.step_number,
+            "step_type": step.step_type,
+            "content": step.content,
+            "tool_used": step.tool_used,
+            "tool_output": step.tool_output,
+            "timestamp": step.timestamp.isoformat(),
+            "total_steps": len(memory.agent_execution.steps)
+        })
+
+    async def _send_action_step_update(self, stream_queue: asyncio.Queue, memory: FraudDetectionMemory, content: str, tool_used: str, tool_input: Dict[str, Any], tool_output: str):
+        """Send an action step update with tool information to the stream."""
+        step = memory.add_action(content, tool_used, tool_input, tool_output)
+        await self._send_stream_update(stream_queue, {
+            "type": "step_completed",
+            "step_number": step.step_number,
+            "step_type": step.step_type,
+            "content": step.content,
+            "tool_used": step.tool_used,
+            "tool_output": step.tool_output,
+            "timestamp": step.timestamp.isoformat(),
+            "total_steps": len(memory.agent_execution.steps)
+        })
+
+    async def _extract_document_data_stream(self, bundle: DocumentBundle, memory: FraudDetectionMemory, stream_queue: asyncio.Queue) -> Dict[str, Any]:
+        """Extract structured data from all documents with streaming updates."""
+        await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                     "I need to extract structured data from all documents to enable cross-document analysis. This is the foundation for all fraud detection.")
+
+        # Use document extraction tool
+        extraction_tool = next(
+            tool for tool in self.tools if tool.name == "extract_data_from_document")
+
+        bundle_data = {
+            "bundle_id": bundle.bundle_id,
+            "documents": [
+                {
+                    "document_type": doc.document_type.value,
+                    "filename": doc.filename,
+                    "content": doc.content
+                }
+                for doc in bundle.documents
+            ]
+        }
+
+        await self._send_action_step_update(stream_queue, memory,
+                                            "Extracting structured data from all documents", "extract_data_from_document", bundle_data, "Processing...")
+
+        # Add progress updates for each document
+        for i, doc in enumerate(bundle.documents, 1):
+            await self._send_stream_update(stream_queue, {
+                "type": "tool_progress",
+                "tool_name": "extract_data_from_document",
+                "tool_number": i,
+                "total_tools": len(bundle.documents),
+                "message": f"Processing document {i}/{len(bundle.documents)}: {doc.filename}"
+            })
+
+        # Run the extraction tool (this is the slow part)
+        # Use asyncio.to_thread to run the synchronous tool in a thread pool
+        result = await asyncio.to_thread(extraction_tool._run, bundle_data=bundle_data)
+
+        await self._send_action_step_update(stream_queue, memory,
+                                            "Extracting structured data from all documents", "extract_data_from_document", bundle_data, result)
+
+        # Parse and store extracted data
+        extracted_data = {"extraction_summary": result}
+        memory.update_context("extracted_data", extracted_data)
+
+        # Add Phase 2 completion message
+        await self._send_step_update(stream_queue, memory, "THOUGHT", f"Document extraction phase completed - extracted structured data from {len(bundle.documents)} documents.")
+
+        return extracted_data
+
+    async def _conduct_systematic_validation_stream(self, bundle: DocumentBundle, memory: FraudDetectionMemory,
+                                                    extracted_data: Dict[str, Any], stream_queue: asyncio.Queue) -> List[str]:
+        """Conduct systematic cross-document validation with streaming updates."""
+        await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                     "Now I'll perform systematic cross-document validation to identify inconsistencies that could indicate fraud.")
+
+        validation_results = []
+
+        # Get validation tools
+        validation_tools = [
+            "validate_quantity_consistency",
+            "validate_weight_consistency",
+            "validate_entity_consistency",
+            "validate_product_descriptions",
+            "validate_value_consistency",
+            "validate_geographic_consistency"
+        ]
+
+        for i, tool_name in enumerate(validation_tools, 1):
+            try:
+                await self._send_stream_update(stream_queue, {
+                    "type": "tool_progress",
+                    "tool_name": tool_name,
+                    "tool_number": i,
+                    "total_tools": len(validation_tools),
+                    "message": f"Running {tool_name.replace('_', ' ')}..."
+                })
+
+                tool = next(
+                    tool for tool in self.tools if tool.name == tool_name)
+
+                await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                             f"Running {tool_name} to check for cross-document inconsistencies.")
+
+                bundle_data = {
+                    "bundle_id": bundle.bundle_id,
+                    "documents": [
+                        {
+                            "document_type": doc.document_type.value,
+                            "filename": doc.filename,
+                            "content": doc.content
+                        }
+                        for doc in bundle.documents
+                    ]
+                }
+
+                tool_options = {"extracted_data": extracted_data}
+                result = await asyncio.to_thread(tool._run, bundle_data=bundle_data,
+                                                 options=tool_options)
+
+                await self._send_action_step_update(stream_queue, memory,
+                                                    f"Validating {tool_name.replace('validate_', '').replace('_', ' ')}",
+                                                    tool_name, {"bundle_data": bundle_data, "options": tool_options}, result)
+
+                validation_results.append(result)
+                memory.add_analysis_result(result)
+
+            except Exception as e:
+                logger.error(f"Error in {tool_name}: {str(e)}")
+                await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
+
+        return validation_results
+
+    async def _conduct_pattern_detection_stream(self, bundle: DocumentBundle, memory: FraudDetectionMemory,
+                                                extracted_data: Dict[str, Any], validation_results: List[str], stream_queue: asyncio.Queue) -> List[str]:
+        """Conduct advanced pattern detection with streaming updates."""
+        await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                     "Moving to advanced pattern detection to identify sophisticated fraud schemes that might not be obvious from basic validation.")
+
+        pattern_results = []
+
+        # Get pattern detection tools
+        pattern_tools = [
+            "detect_product_substitution",
+            "detect_origin_manipulation",
+            "detect_entity_variations",
+            "validate_unit_calculations",
+            "detect_round_number_patterns"
+        ]
+
+        for i, tool_name in enumerate(pattern_tools, 1):
+            try:
+                await self._send_stream_update(stream_queue, {
+                    "type": "tool_progress",
+                    "tool_name": tool_name,
+                    "tool_number": i,
+                    "total_tools": len(pattern_tools),
+                    "message": f"Running {tool_name.replace('_', ' ')}..."
+                })
+
+                tool = next(
+                    (tool for tool in self.tools if tool.name == tool_name), None)
+                if not tool:
+                    continue
+
+                await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                             f"Applying {tool_name} to detect sophisticated fraud patterns.")
+
+                bundle_data = {
+                    "bundle_id": bundle.bundle_id,
+                    "documents": [
+                        {
+                            "document_type": doc.document_type.value,
+                            "filename": doc.filename,
+                            "content": doc.content
+                        }
+                        for doc in bundle.documents
+                    ]
+                }
+
+                tool_options = {
+                    "extracted_data": extracted_data,
+                    "validation_results": validation_results
+                }
+                result = await asyncio.to_thread(tool._run, bundle_data=bundle_data,
+                                                 options=tool_options)
+
+                await self._send_action_step_update(stream_queue, memory,
+                                                    f"Detecting {tool_name.replace('detect_', '').replace('validate_', '').replace('_', ' ')} patterns",
+                                                    tool_name, {"bundle_data": bundle_data, "options": tool_options}, result)
+
+                pattern_results.append(result)
+                memory.add_analysis_result(result)
+
+            except Exception as e:
+                logger.error(f"Error in {tool_name}: {str(e)}")
+                await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
+
+        return pattern_results
+
+    async def _synthesize_evidence_stream(self, bundle: DocumentBundle, memory: FraudDetectionMemory,
+                                          extracted_data: Dict[str, Any], all_results: List[str], stream_queue: asyncio.Queue) -> FraudAnalysisResult:
+        """Synthesize all evidence with streaming updates."""
+        await self._send_step_update(stream_queue, memory, "THOUGHT",
+                                     "Synthesizing all analysis results into a comprehensive fraud assessment with overall confidence and recommendations.")
+
+        try:
+            # Use evidence synthesis tool
+            synthesis_tool = next(
+                tool for tool in self.tools if tool.name == "synthesize_fraud_evidence")
+
+            bundle_data = {
+                "bundle_id": bundle.bundle_id,
+                "documents": [
+                    {
+                        "document_type": doc.document_type.value,
+                        "filename": doc.filename,
+                        "content": doc.content
+                    }
+                    for doc in bundle.documents
+                ]
+            }
+
+            tool_options = {
+                "extracted_data": extracted_data,
+                "analysis_results": all_results
+            }
+
+            await self._send_action_step_update(stream_queue, memory,
+                                                "Synthesizing all fraud evidence into comprehensive assessment", "synthesize_fraud_evidence",
+                                                {"bundle_data": bundle_data, "options": tool_options}, "Processing...")
+
+            synthesis_result = await asyncio.to_thread(synthesis_tool._run,
+                                                       bundle_data=bundle_data, options=tool_options)
+
+            await self._send_action_step_update(stream_queue, memory,
+                                                "Synthesizing all fraud evidence into comprehensive assessment", "synthesize_fraud_evidence",
+                                                {"bundle_data": bundle_data, "options": tool_options}, synthesis_result)
+
+            # Create structured fraud analysis result
+            fraud_analysis = self._parse_synthesis_result(
+                bundle.bundle_id, synthesis_result, all_results)
+
+            return fraud_analysis
+
+        except Exception as e:
+            logger.error(f"Error in evidence synthesis: {str(e)}")
+            await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in evidence synthesis: {str(e)}")
+            # Create fallback fraud analysis
+            return self._create_fallback_analysis(bundle.bundle_id, all_results, str(e))
 
     def _conduct_initial_observation(self, bundle: DocumentBundle) -> str:
         """Conduct initial observation of the document bundle."""

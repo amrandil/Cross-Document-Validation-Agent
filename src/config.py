@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model: str = Field(
-        default="gpt-4-turbo-preview", description="OpenAI model to use")
+        default="gpt-4o", description="OpenAI model to use")
     openai_temperature: float = Field(
         default=0.2, description="LLM temperature for consistency")
 

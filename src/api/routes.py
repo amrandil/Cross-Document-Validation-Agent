@@ -2,9 +2,13 @@
 
 import uuid
 import time
+import json
+import asyncio
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.background import BackgroundTasks
+from datetime import datetime
 
 from .dependencies import get_fraud_executor
 from ..agent.executor import FraudDetectionExecutor
@@ -18,6 +22,9 @@ from ..utils.vision_pdf_processor import VisionPDFProcessor
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Store active streaming connections
+active_streams: Dict[str, asyncio.Queue] = {}
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -219,7 +226,6 @@ async def analyze_uploaded_documents(
 
         # Parse options
         try:
-            import json
             options_dict = json.loads(options) if options else {}
         except json.JSONDecodeError:
             options_dict = {}
@@ -253,6 +259,164 @@ async def analyze_uploaded_documents(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@router.post("/analyze/stream")
+async def analyze_documents_stream(
+    files: List[UploadFile] = File(...),
+    bundle_id: str = Form(None),
+    options: str = Form("{}"),
+    executor: FraudDetectionExecutor = Depends(get_fraud_executor)
+):
+    """Stream real-time fraud analysis updates using Server-Sent Events."""
+
+    if not bundle_id:
+        bundle_id = f"bundle_{uuid.uuid4().hex[:8]}"
+
+    # Create a queue for this stream
+    stream_queue = asyncio.Queue()
+    active_streams[bundle_id] = stream_queue
+
+    async def stream_analysis():
+        try:
+            # Send initial connection message
+            # Padding to defeat potential proxy/browser buffering thresholds
+            yield f": {' ' * 2048}\n\n"
+            yield f"retry: 2000\n\n"
+            yield f"data: {json.dumps({'type': 'connection', 'bundle_id': bundle_id, 'message': 'Stream connected'})}\n\n"
+
+            # Process files (same as upload endpoint)
+            vision_processor = VisionPDFProcessor()
+            documents = []
+            start_pre = time.time()
+            logger.info(f"[SSE] Preprocessing started for bundle {bundle_id}")
+            yield f"data: {json.dumps({'type': 'preprocessing_started', 'bundle_id': bundle_id, 'message': 'Preprocessing files...'})}\n\n"
+
+            for file in files:
+                content = await file.read()
+                filename = file.filename or "unknown"
+                doc_type = _determine_document_type(filename)
+
+                # Announce file start
+                yield f"data: {json.dumps({'type': 'file_started', 'filename': filename, 'document_type': doc_type.value, 'message': f'Starting to process {filename}'})}\n\n"
+
+                if filename.lower().endswith('.pdf') or VisionPDFProcessor.is_pdf(content):
+                    # Run potentially slow PDF processing without blocking event loop
+                    try:
+                        content_str = await asyncio.to_thread(
+                            vision_processor.extract_comprehensive_content,
+                            content,
+                            filename,
+                            doc_type
+                        )
+                    except Exception as e:
+                        logger.error(f"Error extracting PDF {filename}: {e}")
+                        yield f"data: {json.dumps({'type': 'file_error', 'filename': filename, 'message': f'Failed to extract {filename}: {str(e)}'})}\n\n"
+                        raise
+                else:
+                    try:
+                        content_str = content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        encodings = ['latin1', 'cp1252', 'iso-8859-1']
+                        content_str = None
+                        for encoding in encodings:
+                            try:
+                                content_str = content.decode(encoding)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        if content_str is None:
+                            raise ValueError(
+                                f"Could not decode file {filename}")
+
+                document = Document(
+                    document_type=doc_type,
+                    filename=filename,
+                    content=content_str
+                )
+                documents.append(document)
+
+                # Announce file completion
+                yield f"data: {json.dumps({'type': 'file_completed', 'filename': filename, 'message': f'Completed processing {filename}'})}\n\n"
+
+            # Create bundle
+            bundle = DocumentBundle(bundle_id=bundle_id, documents=documents)
+
+            elapsed_pre = int((time.time() - start_pre) * 1000)
+            logger.info(
+                f"[SSE] Preprocessing completed for bundle {bundle_id} in {elapsed_pre}ms")
+            yield f"data: {json.dumps({'type': 'preprocessing_completed', 'bundle_id': bundle_id, 'count': len(documents), 'message': 'Preprocessing complete'})}\n\n"
+
+            # Parse options
+            try:
+                options_dict = json.loads(options) if options else {}
+            except json.JSONDecodeError:
+                options_dict = {}
+
+            # Start streaming analysis in background task
+            analysis_task = asyncio.create_task(
+                executor.execute_fraud_analysis_stream(
+                    bundle, options_dict, stream_queue)
+            )
+
+            # Consume queue and yield updates in real-time
+            while True:
+                try:
+                    # Wait for updates with shorter timeout so keepalives flow frequently
+                    update = await asyncio.wait_for(stream_queue.get(), timeout=5.0)
+
+                    # Yield the update to the client
+                    yield f"data: {json.dumps(update)}\n\n"
+
+                    # Check if analysis is complete
+                    if update.get('type') in ['analysis_completed', 'analysis_error']:
+                        break
+
+                except asyncio.TimeoutError:
+                    # Send keep-alive (comment line per SSE spec)
+                    yield f": keepalive {datetime.utcnow().isoformat()}\n\n"
+                except Exception as e:
+                    logger.error(f"Error in stream processing: {str(e)}")
+                    break
+
+            # Wait for analysis task to complete
+            try:
+                await analysis_task
+            except Exception as e:
+                logger.error(f"Analysis task failed: {str(e)}")
+
+        except Exception as e:
+            error_msg = f"Streaming analysis failed: {str(e)}"
+            logger.error(error_msg)
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+        finally:
+            # Clean up
+            if bundle_id in active_streams:
+                del active_streams[bundle_id]
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Analysis complete'})}\n\n"
+
+    return StreamingResponse(
+        stream_analysis(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+
+@router.get("/stream/{bundle_id}/status")
+async def get_stream_status(bundle_id: str):
+    """Get the status of a streaming analysis."""
+    is_active = bundle_id in active_streams
+    return {
+        "bundle_id": bundle_id,
+        "active": is_active,
+        "timestamp": time.time()
+    }
 
 
 @router.get("/agent/info")

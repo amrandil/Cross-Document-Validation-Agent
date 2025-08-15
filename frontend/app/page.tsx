@@ -14,6 +14,7 @@ import { useHealthCheck } from "@/hooks/use-api";
 export default function Home() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   const {
     data: healthData,
@@ -104,10 +105,10 @@ export default function Home() {
             <span className="text-[#2256AC]">Multi-Document</span>{" "}
             <span className="text-[#EC8011]">Fraud Detection Agent</span>
           </h1>
-          <p className="text-lg text-microclear-gray max-w-3xl mx-auto">
+          {/*<p className="text-lg text-microclear-gray max-w-3xl mx-auto">
             Advanced AI-powered analysis for customs fraud detection with
             intelligent pattern recognition
-          </p>
+          </p>*/}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -148,18 +149,23 @@ export default function Home() {
                     <Shield className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      Upload Documents
+                    <h2 className="text-xl font-semibold text-gray-900 transition-all">
+                      {hasStarted ? "Agent Analysis" : "Upload Documents"}
                     </h2>
                     <p className="text-microclear-gray text-sm">
-                      Upload customs documents for fraud detection analysis
+                      {hasStarted
+                        ? "Live investigation stream and reasoning"
+                        : "Upload customs documents for fraud detection analysis"}
                     </p>
                   </div>
                 </div>
               </div>
               <div className="p-6">
                 <FileUpload
-                  onAnalysisStart={() => setIsAnalyzing(true)}
+                  onAnalysisStart={() => {
+                    setIsAnalyzing(true);
+                    setHasStarted(true);
+                  }}
                   onAnalysisComplete={(result) => {
                     setAnalysisResult(result);
                     setIsAnalyzing(false);

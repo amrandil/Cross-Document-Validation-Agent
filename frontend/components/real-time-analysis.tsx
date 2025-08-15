@@ -175,6 +175,9 @@ export default function RealTimeAnalysis({
 
   const streamRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startConsumedRef = useRef<number | null>(null);
+  const isStartingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Auto-scroll to bottom when new updates arrive
   useEffect(() => {
@@ -204,9 +207,11 @@ export default function RealTimeAnalysis({
 
   // External trigger to start streaming
   useEffect(() => {
-    if (startSignal && startSignal > 0 && !isStreaming) {
-      void startStreaming();
-    }
+    if (!startSignal || startSignal <= 0) return;
+    if (startConsumedRef.current === startSignal) return;
+    if (isStreaming || isStartingRef.current) return;
+    startConsumedRef.current = startSignal;
+    void startStreaming();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startSignal]);
 
@@ -248,6 +253,15 @@ export default function RealTimeAnalysis({
       return;
     }
 
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch {}
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    isStartingRef.current = true;
     setIsStreaming(true);
     setError(null);
     setStreamUpdates([]);
@@ -269,6 +283,7 @@ export default function RealTimeAnalysis({
         {
           method: "POST",
           body: formData,
+          signal: controller.signal,
         }
       );
 
@@ -313,9 +328,14 @@ export default function RealTimeAnalysis({
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
       console.error("Streaming error:", err);
       setError(err instanceof Error ? err.message : "Streaming failed");
       setIsStreaming(false);
+    } finally {
+      isStartingRef.current = false;
     }
   };
 
@@ -431,12 +451,12 @@ export default function RealTimeAnalysis({
 
       {/* Real-time Reasoning Thread */}
       <Card>
-        <CardHeader className="py-3">
+        {/*<CardHeader className="py-3">
           <CardTitle className="flex items-center space-x-2 text-base">
             <MessageSquare className="h-4 w-4" />
             <span>Agent Reasoning</span>
           </CardTitle>
-        </CardHeader>
+        </CardHeader>*/}
         <CardContent>
           <ScrollArea
             ref={streamRef}

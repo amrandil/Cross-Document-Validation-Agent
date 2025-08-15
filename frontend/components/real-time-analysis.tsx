@@ -1,19 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Activity,
   CheckCircle,
@@ -440,8 +430,7 @@ export default function RealTimeAnalysis({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Error Display */}
+    <div className="space-y-6 h-full flex flex-col">
       {error && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -449,335 +438,305 @@ export default function RealTimeAnalysis({
         </Alert>
       )}
 
-      {/* Real-time Reasoning Thread */}
-      <Card>
-        {/*<CardHeader className="py-3">
-          <CardTitle className="flex items-center space-x-2 text-base">
-            <MessageSquare className="h-4 w-4" />
-            <span>Agent Reasoning</span>
-          </CardTitle>
-        </CardHeader>*/}
-        <CardContent>
-          <ScrollArea
-            ref={streamRef}
-            className="h-[600px] w-full border rounded-lg p-4"
-          >
-            <div className="space-y-4">
-              {/* Welcome Message */}
-              {streamUpdates.length === 0 && !isStreaming && (
-                <div className="text-center py-8 text-gray-500">
-                  <Bot className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium">Ready to Start Analysis</p>
-                  <p className="text-sm">
-                    Click "Start Analysis" to begin the fraud detection process
-                  </p>
-                </div>
-              )}
+      <div className="flex-1 min-h-0">
+        <div ref={streamRef} className="h-full w-full overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+            {streamUpdates.length === 0 && !isStreaming && (
+              <div className="text-center py-16 text-gray-500">
+                <Bot className="h-16 w-16 mx-auto mb-6 text-gray-300" />
+                <p className="text-xl font-medium text-gray-700 mb-2">
+                  Ready to Start Analysis
+                </p>
+                <p className="text-base text-gray-500">
+                  The agent will begin processing your documents and share its
+                  reasoning here
+                </p>
+              </div>
+            )}
 
-              {/* Loading Message */}
-              {streamUpdates.length === 0 && isStreaming && (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p>Initializing agent and connecting to analysis stream...</p>
-                </div>
-              )}
+            {streamUpdates.length === 0 && isStreaming && (
+              <div className="text-center py-16 text-gray-500">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-gray-400 mx-auto mb-4"></div>
+                <p className="text-base text-gray-600">
+                  Initializing agent and connecting to analysis stream...
+                </p>
+              </div>
+            )}
 
-              {/* Stream Updates */}
-              {streamUpdates.map((update, index) => {
-                // Handle different update types
-                if (update.type === "step_completed" && update.step_type) {
-                  return (
-                    <div key={index} className="flex space-x-3">
-                      {/* Agent Avatar */}
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-blue-600" />
-                        </div>
+            {streamUpdates.map((update, index) => {
+              // Handle different update types
+              if (update.type === "step_completed" && update.step_type) {
+                return (
+                  <div key={index} className="flex space-x-4 group">
+                    {/* Agent Avatar */}
+                    <div className="flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-white" />
+                      </div>
+                    </div>
+
+                    {/* Message Content */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      {/* Header */}
+                      <div className="flex items-center space-x-3">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-xs border-gray-200 bg-gray-50",
+                            getStepTypeColor(update.step_type)
+                          )}
+                        >
+                          {getStepTypeIcon(update.step_type)}
+                          <span className="ml-1">{update.step_type}</span>
+                        </Badge>
+                        {update.step_number && (
+                          <span className="text-xs text-gray-500">
+                            Step {update.step_number}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400">
+                          {new Date(update.timestamp).toLocaleTimeString()}
+                        </span>
                       </div>
 
-                      {/* Message Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="bg-white border rounded-lg p-4 shadow-sm">
-                          {/* Header */}
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs",
-                                  getStepTypeColor(update.step_type)
-                                )}
-                              >
-                                {getStepTypeIcon(update.step_type)}
-                                <span className="ml-1">{update.step_type}</span>
-                              </Badge>
-                              {update.step_number && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Step {update.step_number}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-500 flex items-center">
-                              <Clock className="h-3 w-3 mr-1" />
-                              {new Date(update.timestamp).toLocaleTimeString()}
-                            </div>
+                      {/* Content */}
+                      <div className="prose prose-gray max-w-none">
+                        <p className="text-gray-800 text-[15px] leading-relaxed whitespace-pre-wrap m-0">
+                          {update.content}
+                        </p>
+                      </div>
+
+                      {/* Tool Information */}
+                      {update.tool_used && (
+                        <div className="mt-4 pt-3 border-t border-gray-100">
+                          <div className="flex items-center space-x-2 mb-3">
+                            {getToolIcon(update.tool_used)}
+                            <span className="text-sm font-medium text-gray-600">
+                              {update.tool_used.replace(/_/g, " ")}
+                            </span>
                           </div>
 
-                          {/* Content */}
-                          <div className="prose prose-sm max-w-none">
-                            <p className="text-gray-800 whitespace-pre-wrap">
-                              {update.content}
-                            </p>
-                          </div>
-
-                          {/* Tool Information */}
-                          {update.tool_used && (
-                            <div className="mt-3 pt-3 border-t border-gray-100">
-                              <div className="flex items-center space-x-2 mb-2">
-                                {getToolIcon(update.tool_used)}
-                                <span className="text-sm font-medium text-gray-700">
-                                  Tool: {update.tool_used.replace(/_/g, " ")}
-                                </span>
+                          {showToolDetails && update.tool_output && (
+                            <div className="bg-gray-50/50 p-4 rounded-lg border border-gray-100">
+                              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                                Output
                               </div>
-
-                              {showToolDetails && update.tool_output && (
-                                <div className="bg-gray-50 p-3 rounded border">
-                                  <div className="text-xs font-medium text-gray-600 mb-1">
-                                    Tool Output:
-                                  </div>
-                                  <pre className="text-xs bg-white p-2 rounded border overflow-x-auto max-h-32">
-                                    {update.tool_output}
-                                  </pre>
-                                </div>
-                              )}
+                              <pre className="text-xs text-gray-700 bg-white p-3 rounded border overflow-x-auto max-h-32 font-mono">
+                                {update.tool_output}
+                              </pre>
                             </div>
                           )}
                         </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle phase updates
+              if (update.type === "phase_started") {
+                return (
+                  <div key={index} className="flex space-x-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center">
+                        <Target className="h-4 w-4 text-white" />
                       </div>
                     </div>
-                  );
-                }
-
-                // Handle phase updates
-                if (update.type === "phase_started") {
-                  return (
-                    <div key={index} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                          <Target className="h-4 w-4 text-purple-600" />
-                        </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center space-x-3">
+                        {getPhaseIcon(update.phase_id || "")}
+                        <span className="font-medium text-blue-700 text-sm">
+                          Phase {update.phase_number}: {update.phase_name}
+                        </span>
                       </div>
-                      <div className="flex-1">
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                          <div className="flex items-center space-x-2">
-                            {getPhaseIcon(update.phase_id || "")}
-                            <span className="font-medium text-purple-800">
-                              Phase {update.phase_number}: {update.phase_name}
-                            </span>
-                          </div>
-                          {update.message && (
-                            <p className="text-sm text-purple-700 mt-1">
-                              {update.message}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                      {update.message && (
+                        <p className="text-[15px] text-gray-600 leading-relaxed">
+                          {update.message}
+                        </p>
+                      )}
                     </div>
-                  );
-                }
+                  </div>
+                );
+              }
 
-                // Handle tool progress
-                if (update.type === "tool_progress") {
-                  return (
-                    <div key={index} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                          <Settings className="h-4 w-4 text-green-600" />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                          <div className="flex items-center space-x-2">
-                            {getToolIcon(update.tool_name || "")}
-                            <span className="font-medium text-green-800">
-                              Running: {update.tool_name?.replace(/_/g, " ")}
-                            </span>
-                          </div>
-                          {update.message && (
-                            <p className="text-sm text-green-700 mt-1">
-                              {update.message}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Handle analysis completion
-                if (update.type === "analysis_completed") {
-                  return (
-                    <div key={index} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <CheckCircle className="h-5 w-5 text-green-600" />
-                            <span className="font-medium text-green-800">
-                              Analysis Completed
-                            </span>
-                          </div>
-                          <p className="text-sm text-green-700">
-                            Fraud detection analysis has been completed
-                            successfully.
-                          </p>
-                          {update.fraud_detected !== undefined && (
-                            <div className="mt-2">
-                              <Badge
-                                variant={
-                                  update.fraud_detected
-                                    ? "destructive"
-                                    : "default"
-                                }
-                                className="mr-2"
-                              >
-                                {update.fraud_detected
-                                  ? "Fraud Detected"
-                                  : "No Fraud Detected"}
-                              </Badge>
-                              {update.risk_level && (
-                                <Badge variant="outline">
-                                  Risk: {update.risk_level}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Handle errors
-                if (update.type === "analysis_error") {
-                  return (
-                    <div key={index} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                          <AlertTriangle className="h-4 w-4 text-red-600" />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <AlertTriangle className="h-5 w-5 text-red-600" />
-                            <span className="font-medium text-red-800">
-                              Analysis Error
-                            </span>
-                          </div>
-                          <p className="text-sm text-red-700">
-                            {update.error ||
-                              "An error occurred during analysis"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Default case for other update types
+              // Handle tool progress
+              if (update.type === "tool_progress") {
                 return (
                   <div key={index} className="flex space-x-3">
                     <div className="flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Info className="h-4 w-4 text-gray-600" />
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                        <Settings className="h-4 w-4 text-green-600" />
                       </div>
                     </div>
                     <div className="flex-1">
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-sm text-gray-700">
-                          {update.message || JSON.stringify(update)}
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center space-x-2">
+                          {getToolIcon(update.tool_name || "")}
+                          <span className="font-medium text-green-800">
+                            Running: {update.tool_name?.replace(/_/g, " ")}
+                          </span>
                         </div>
+                        {update.message && (
+                          <p className="text-sm text-green-700 mt-1">
+                            {update.message}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+              }
 
-      {/* Debug Panel */}
-      {showDebug && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Terminal className="h-5 w-5" />
-              <span>Debug Information</span>
-            </CardTitle>
-            <CardDescription>
-              Raw stream updates and system information
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium mb-2">System Status</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium">Is Streaming:</span>{" "}
-                    {isStreaming ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <span className="font-medium">Current Phase:</span>{" "}
-                    {currentPhase}
-                  </div>
-                  <div>
-                    <span className="font-medium">Total Updates:</span>{" "}
-                    {streamUpdates.length}
-                  </div>
-                  <div>
-                    <span className="font-medium">Step Updates:</span>{" "}
-                    {
-                      streamUpdates.filter((u) => u.type === "step_completed")
-                        .length
-                    }
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-2">Recent Updates (Last 10)</h4>
-                <div className="max-h-64 overflow-y-auto bg-gray-50 p-3 rounded border">
-                  {streamUpdates.slice(-10).map((update, index) => (
-                    <div
-                      key={index}
-                      className="text-xs mb-2 p-2 bg-white rounded border"
-                    >
-                      <div className="font-medium text-blue-600">
-                        {update.type}
+              // Handle analysis completion
+              if (update.type === "analysis_completed") {
+                return (
+                  <div key={index} className="flex space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
                       </div>
-                      <div className="text-gray-600">{update.timestamp}</div>
-                      {update.message && (
-                        <div className="text-gray-800">{update.message}</div>
-                      )}
-                      {update.step_type && (
-                        <div className="text-gray-800">
-                          Step: {update.step_type}
-                        </div>
-                      )}
                     </div>
-                  ))}
+                    <div className="flex-1">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                          <span className="font-medium text-green-800">
+                            Analysis Completed
+                          </span>
+                        </div>
+                        <p className="text-sm text-green-700">
+                          Fraud detection analysis has been completed
+                          successfully.
+                        </p>
+                        {update.fraud_detected !== undefined && (
+                          <div className="mt-2">
+                            <Badge
+                              variant={
+                                update.fraud_detected
+                                  ? "destructive"
+                                  : "default"
+                              }
+                              className="mr-2"
+                            >
+                              {update.fraud_detected
+                                ? "Fraud Detected"
+                                : "No Fraud Detected"}
+                            </Badge>
+                            {update.risk_level && (
+                              <Badge variant="outline">
+                                Risk: {update.risk_level}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle errors
+              if (update.type === "analysis_error") {
+                return (
+                  <div key={index} className="flex space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <AlertTriangle className="h-5 w-5 text-red-600" />
+                          <span className="font-medium text-red-800">
+                            Analysis Error
+                          </span>
+                        </div>
+                        <p className="text-sm text-red-700">
+                          {update.error || "An error occurred during analysis"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Default case for other update types
+              return (
+                <div key={index} className="flex space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                      <Info className="h-4 w-4 text-gray-600" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="text-sm text-gray-700">
+                        {update.message || JSON.stringify(update)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {showDebug && (
+        <div className="border rounded-lg p-4">
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-medium mb-2">System Status</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium">Is Streaming:</span>{" "}
+                  {isStreaming ? "Yes" : "No"}
+                </div>
+                <div>
+                  <span className="font-medium">Current Phase:</span>{" "}
+                  {currentPhase}
+                </div>
+                <div>
+                  <span className="font-medium">Total Updates:</span>{" "}
+                  {streamUpdates.length}
+                </div>
+                <div>
+                  <span className="font-medium">Step Updates:</span>{" "}
+                  {
+                    streamUpdates.filter((u) => u.type === "step_completed")
+                      .length
+                  }
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+
+            <div>
+              <h4 className="font-medium mb-2">Recent Updates (Last 10)</h4>
+              <div className="max-h-64 overflow-y-auto bg-gray-50 p-3 rounded border">
+                {streamUpdates.slice(-10).map((update, index) => (
+                  <div
+                    key={index}
+                    className="text-xs mb-2 p-2 bg-white rounded border"
+                  >
+                    <div className="font-medium text-blue-600">
+                      {update.type}
+                    </div>
+                    <div className="text-gray-600">{update.timestamp}</div>
+                    {update.message && (
+                      <div className="text-gray-800">{update.message}</div>
+                    )}
+                    {update.step_type && (
+                      <div className="text-gray-800">
+                        Step: {update.step_type}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

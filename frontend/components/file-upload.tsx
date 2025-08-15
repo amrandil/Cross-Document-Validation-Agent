@@ -15,6 +15,8 @@ interface FileUploadProps {
   onAnalysisComplete: (result: any) => void;
   onAnalysisError: () => void;
   isAnalyzing: boolean;
+  activeTab?: "upload" | "thread";
+  hasStarted?: boolean;
 }
 
 interface UploadedFile {
@@ -32,13 +34,15 @@ export function FileUpload({
   onAnalysisComplete,
   onAnalysisError,
   isAnalyzing,
+  activeTab = "upload",
+  hasStarted = false,
 }: FileUploadProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [filePreviews, setFilePreviews] = useState<Record<string, PreviewData>>(
     {}
   );
   const [startSignal, setStartSignal] = useState(0);
-  const [hasStarted, setHasStarted] = useState(false);
+  const [internalHasStarted, setInternalHasStarted] = useState(false);
   const [hideUpload, setHideUpload] = useState(false);
   // bundleId removed per request
   const [analysisOptions, setAnalysisOptions] = useState<AnalysisOptions>({
@@ -163,164 +167,150 @@ export function FileUpload({
     onAnalysisError();
   };
 
-  return (
-    <div className="space-y-6">
-      {/* File Upload Area */}
-      {!hideUpload && (
-        <div
-          className={cn(
-            "transition-all duration-500",
-            hasStarted
-              ? "max-h-0 opacity-0 -translate-y-2 pointer-events-none overflow-hidden"
-              : "max-h-[1000px] opacity-100 translate-y-0"
-          )}
-        >
-          <div
-            {...getRootProps()}
-            className={cn(
-              "border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors",
-              isDragActive
-                ? "border-microclear-blue bg-blue-50"
-                : "border-gray-300 hover:border-microclear-blue hover:bg-gray-50"
-            )}
-          >
-            <input {...getInputProps()} />
-            <div className="text-center py-2">
-              <Upload className="h-8 w-8 text-gray-400 inline-block mr-2" />
-              <span className="text-sm text-gray-600">
-                Click or drag files here (PDF, TXT, DOCX, CSV)
-              </span>
-            </div>
+  // Show upload view when activeTab is "upload" or when analysis hasn't started
+  const showUploadView = activeTab === "upload" || !hasStarted;
+  // Show thread view when activeTab is "thread" and analysis has started
+  const showThreadView = activeTab === "thread" && hasStarted;
 
-            {uploadedFiles.length > 0 && (
-              <div className="mt-3">
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-600">
-                    {uploadedFiles.length} file
-                    {uploadedFiles.length > 1 ? "s" : ""} selected
-                  </span>
-                </div>
-                <div className="mt-3 max-h-64 overflow-y-auto pr-1">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {uploadedFiles.map(({ file, id }) => {
-                      const preview = filePreviews[id];
-                      return (
-                        <div
-                          key={id}
-                          className="p-2 bg-gray-50 rounded-lg border"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <File className="h-5 w-5 text-gray-400" />
-                              <div>
-                                <p
-                                  className="font-medium text-sm truncate max-w-[12rem]"
-                                  title={file.name}
-                                >
-                                  {file.name}
-                                </p>
-                                <p className="text-[10px] text-gray-500">
-                                  {formatFileSize(file.size)}
-                                </p>
+  return (
+    <div className="h-full flex flex-col">
+      {/* Upload View */}
+      {showUploadView && (
+        <div className="p-8 space-y-8">
+          {/* Error Display */}
+          {apiError && (
+            <Alert variant="destructive" className="border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-red-700">
+                {apiError}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* File Upload Area */}
+          <div className="space-y-6">
+            <div
+              {...getRootProps()}
+              className={cn(
+                "border-2 border-dashed rounded-xl p-8 cursor-pointer transition-all duration-200 bg-gray-50/50",
+                isDragActive
+                  ? "border-blue-400 bg-blue-50/50"
+                  : "border-gray-300 hover:border-gray-400 hover:bg-gray-100/50"
+              )}
+            >
+              <input {...getInputProps()} />
+              <div className="text-center py-4">
+                <Upload className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                <p className="text-base font-medium text-gray-700 mb-1">
+                  Drop files here or click to browse
+                </p>
+                <p className="text-sm text-gray-500">
+                  Supports PDF, TXT, DOCX, CSV files
+                </p>
+              </div>
+
+              {uploadedFiles.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center">
+                    <span className="text-xs text-gray-600">
+                      {uploadedFiles.length} file
+                      {uploadedFiles.length > 1 ? "s" : ""} selected
+                    </span>
+                  </div>
+                  <div className="mt-3 max-h-64 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {uploadedFiles.map(({ file, id }) => {
+                        const preview = filePreviews[id];
+                        return (
+                          <div
+                            key={id}
+                            className="p-2 bg-gray-50 rounded border"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                <File className="h-5 w-5 text-gray-400" />
+                                <div>
+                                  <p
+                                    className="font-medium text-sm truncate max-w-[12rem]"
+                                    title={file.name}
+                                  >
+                                    {file.name}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500">
+                                    {formatFileSize(file.size)}
+                                  </p>
+                                </div>
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeFile(id)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeFile(id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                            <div>
+                              {preview?.kind === "pdf" && (
+                                <iframe
+                                  src={preview.url}
+                                  className="w-full h-32 rounded border bg-white"
+                                  title={`preview-${id}`}
+                                />
+                              )}
+                              {preview?.kind === "text" && (
+                                <pre className="w-full max-h-32 overflow-auto text-[10px] bg-white rounded border p-1 whitespace-pre-wrap">
+                                  {preview.text}
+                                </pre>
+                              )}
+                              {preview?.kind === "unsupported" && (
+                                <div className="text-xs text-gray-600">
+                                  Preview not available
+                                </div>
+                              )}
+                              {!preview && (
+                                <div className="text-xs text-gray-500">
+                                  Generating preview...
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            {preview?.kind === "pdf" && (
-                              <iframe
-                                src={preview.url}
-                                className="w-full h-32 rounded border bg-white"
-                                title={`preview-${id}`}
-                              />
-                            )}
-                            {preview?.kind === "text" && (
-                              <pre className="w-full max-h-32 overflow-auto text-[10px] bg-white rounded border p-1 whitespace-pre-wrap">
-                                {preview.text}
-                              </pre>
-                            )}
-                            {preview?.kind === "unsupported" && (
-                              <div className="text-xs text-gray-600">
-                                Preview not available
-                              </div>
-                            )}
-                            {!preview && (
-                              <div className="text-xs text-gray-500">
-                                Generating preview...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Start Analysis button */}
+            {!hasStarted && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  onClick={() => {
+                    setInternalHasStarted(true);
+                    onAnalysisStart();
+                    setStartSignal((s) => s + 1);
+                  }}
+                  disabled={uploadedFiles.length < 2}
+                  className={cn(
+                    "px-8 py-2.5 font-medium",
+                    uploadedFiles.length < 2
+                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      : "bg-gray-900 hover:bg-gray-800 text-white shadow-sm"
+                  )}
+                >
+                  Start Analysis
+                </Button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Start Analysis button under upload box */}
-      {!hideUpload && (
-        <div
-          className={cn(
-            "flex justify-center transition-all duration-500",
-            hasStarted
-              ? "max-h-0 opacity-0 -translate-y-2 pointer-events-none overflow-hidden"
-              : "max-h-20 opacity-100 translate-y-0"
-          )}
-        >
-          <Button
-            onClick={() => {
-              setHasStarted(true);
-              onAnalysisStart();
-              setStartSignal((s) => s + 1);
-              // Unmount the upload area after the fade/collapse finishes
-              window.setTimeout(() => {
-                revokeAllPreviews();
-                setHideUpload(true);
-              }, 550);
-            }}
-            disabled={uploadedFiles.length < 2}
-            className={cn(
-              "px-6",
-              uploadedFiles.length < 2
-                ? "bg-gray-300 text-gray-600"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
-            )}
-          >
-            Start Analysis
-          </Button>
-        </div>
-      )}
-
-      {/* Uploaded Files section removed; previews will render inside the dropzone */}
-
-      {/* Bundle ID removed per request */}
-
-      {/* Error Display */}
-      {apiError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{apiError}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Real-Time Analysis Component */}
-      {hasStarted && uploadedFiles.length > 0 && (
-        <div
-          className={cn(
-            "transition-all duration-500 opacity-100 translate-y-0"
-          )}
-        >
+      {/* Thread View */}
+      {showThreadView && (
+        <div className="flex-1 min-h-0 flex flex-col">
           <RealTimeAnalysis
             files={uploadedFiles.map(({ file }) => file)}
             options={analysisOptions}

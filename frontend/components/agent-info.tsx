@@ -1,44 +1,12 @@
 "use client";
 
-import type React from "react";
-
-import { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
-import {
-  RefreshCw,
-  Bot,
-  PenToolIcon as Tool,
-  FileText,
-  Shield,
-  AlertCircle,
-  CheckCircle,
-  Info,
-  Zap,
-  Database,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+import { RefreshCw, Bot, AlertCircle } from "lucide-react";
 import { useAgentInfo } from "@/hooks/use-api";
 
-interface AgentCapability {
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-}
-
 export function AgentInfo() {
-  const [isExpanded, setIsExpanded] = useState(false);
   const { data: agentInfo, loading, error, fetchAgentInfo } = useAgentInfo();
 
   useEffect(() => {
@@ -51,19 +19,6 @@ export function AgentInfo() {
     };
     loadAgentInfo();
   }, [fetchAgentInfo]);
-
-  const getCapabilityIcon = (capability: string) => {
-    const lowerCapability = capability.toLowerCase();
-    if (lowerCapability.includes("document"))
-      return <FileText className="h-3 w-3" />;
-    if (lowerCapability.includes("fraud"))
-      return <Shield className="h-3 w-3" />;
-    if (lowerCapability.includes("analysis"))
-      return <Zap className="h-3 w-3" />;
-    if (lowerCapability.includes("data"))
-      return <Database className="h-3 w-3" />;
-    return <Tool className="h-3 w-3" />;
-  };
 
   if (error) {
     return (
@@ -89,30 +44,28 @@ export function AgentInfo() {
 
   if (!agentInfo && !loading) {
     return (
-      <Card className="text-xs">
-        <CardContent className="flex flex-col items-center justify-center py-4">
-          <Bot className="h-6 w-6 text-gray-400 mb-2" />
-          <h3 className="text-sm font-medium text-gray-900 mb-1">
-            No Agent Info
-          </h3>
-          <Button
-            onClick={fetchAgentInfo}
-            variant="outline"
-            size="sm"
-            className="h-6 text-xs"
-          >
-            <RefreshCw className="h-3 w-3 mr-1" />
-            Load Info
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="text-xs text-gray-600">
+        <div className="flex items-center mb-2">
+          <Bot className="h-4 w-4 mr-2 text-gray-400" />
+          <span className="font-medium">No Agent Info</span>
+        </div>
+        <Button
+          onClick={fetchAgentInfo}
+          variant="outline"
+          size="sm"
+          className="h-6 text-xs"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Load Info
+        </Button>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-xs">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-700">Agent Overview</span>
+        <span className="text-xs text-gray-700">Overview</span>
         <Button
           onClick={fetchAgentInfo}
           disabled={loading}
@@ -125,46 +78,41 @@ export function AgentInfo() {
       </div>
 
       {loading && (
-        <Card className="text-xs">
-          <CardContent className="flex items-center justify-center py-3">
-            <RefreshCw className="h-4 w-4 animate-spin text-microclear-blue mr-2" />
-            <span>Loading...</span>
-          </CardContent>
-        </Card>
+        <div className="text-xs text-gray-600 flex items-center">
+          <RefreshCw className="h-3 w-3 animate-spin text-microclear-blue mr-2" />
+          Loading...
+        </div>
       )}
 
       {agentInfo && (
-        <Card className="text-xs">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center text-sm">
-              <Bot className="h-4 w-4 mr-1" />
-              LLMs Used
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {agentInfo.llms_used && agentInfo.llms_used.length > 0 ? (
-              <div className="space-y-1">
-                {agentInfo.llms_used.map((m: any, idx: number) => (
-                  <div
+        <div className="space-y-2">
+          {agentInfo.agent_type && (
+            <div className="flex items-start">
+              <Bot className="h-3 w-3 text-microclear-blue mt-0.5 mr-2" />
+              <div className="min-w-0">
+                <div className="font-medium break-words">
+                  {agentInfo.agent_type}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {agentInfo.tools && agentInfo.tools.length > 0 && (
+            <div>
+              <div className="text-[11px] text-gray-600 mb-1">Tools</div>
+              <ul className="list-disc ml-5 space-y-0.5">
+                {agentInfo.tools.slice(0, 6).map((tool, idx) => (
+                  <li
                     key={idx}
-                    className="flex items-start p-2 bg-gray-50 rounded border text-xs"
-                    title={`${m.name} (${m.role})`}
+                    className="text-[11px] text-gray-700 break-words"
                   >
-                    <Bot className="h-3 w-3 text-microclear-blue mt-0.5 mr-2" />
-                    <div className="min-w-0">
-                      <div className="font-medium break-words">{m.name}</div>
-                      <div className="text-gray-600 break-words">{m.role}</div>
-                    </div>
-                  </div>
+                    {tool}
+                  </li>
                 ))}
-              </div>
-            ) : (
-              <div className="text-center py-2 text-xs text-gray-500">
-                No LLMs reported
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

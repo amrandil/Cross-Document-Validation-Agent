@@ -18,7 +18,18 @@ logger = get_logger(__name__)
 class VisionPDFProcessor:
     """Utility class for extracting comprehensive content from PDF files using vision-enabled LLMs."""
 
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(VisionPDFProcessor, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        if VisionPDFProcessor._initialized:
+            return
+
         # Centralize model names so we can report them dynamically
         self.vision_model_name = "gpt-4o"
         self.summary_model_name = "gpt-4o"
@@ -30,6 +41,15 @@ class VisionPDFProcessor:
             max_tokens=4096,  # Allow for comprehensive extraction
             api_key=settings.openai_api_key
         )
+
+        VisionPDFProcessor._initialized = True
+
+    @classmethod
+    def get_instance(cls):
+        """Get the singleton instance of VisionPDFProcessor."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
 
     def extract_comprehensive_content(
         self,
@@ -347,3 +367,52 @@ Note: Summary generation failed, showing detailed extraction only
                 "Fraud detection optimization"
             ]
         }
+
+    def update_vision_model(self, new_model: str) -> None:
+        """Update the vision model used for document extraction."""
+        try:
+            # Test the new model
+            test_llm = ChatOpenAI(
+                model=new_model,
+                temperature=0.1,
+                max_tokens=4096,
+                api_key=settings.openai_api_key
+            )
+
+            # Test with a simple text message to validate the model
+            test_message = HumanMessage(content="Test message")
+            test_llm.invoke([test_message])
+
+            # Update if successful
+            self.vision_model_name = new_model
+            self.vision_llm = test_llm
+            logger.info(f"Successfully updated vision model to: {new_model}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to update vision model to {new_model}: {str(e)}")
+            raise ValueError(f"Invalid vision model '{new_model}': {str(e)}")
+
+    def update_summary_model(self, new_model: str) -> None:
+        """Update the summary model used for document summarization."""
+        try:
+            # Test the new model
+            test_llm = ChatOpenAI(
+                model=new_model,
+                temperature=0.2,
+                max_tokens=2048,
+                api_key=settings.openai_api_key
+            )
+
+            # Test with a simple message to validate the model
+            test_message = "Test message"
+            test_llm.invoke(test_message)
+
+            # Update if successful
+            self.summary_model_name = new_model
+            logger.info(f"Successfully updated summary model to: {new_model}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to update summary model to {new_model}: {str(e)}")
+            raise ValueError(f"Invalid summary model '{new_model}': {str(e)}")

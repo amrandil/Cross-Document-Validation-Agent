@@ -192,7 +192,7 @@ export function FileUpload({
             <div
               {...getRootProps()}
               className={cn(
-                "border-2 border-dashed rounded-xl p-8 cursor-pointer transition-all duration-200 bg-gray-50/50",
+                "border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all duration-200 bg-gray-50/50 max-w-6xl mx-auto",
                 isDragActive
                   ? "border-blue-400 bg-blue-50/50"
                   : "border-gray-300 hover:border-gray-400 hover:bg-gray-100/50"
@@ -200,13 +200,51 @@ export function FileUpload({
             >
               <input {...getInputProps()} />
               <div className="text-center py-4">
-                <Upload className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                <Upload className="h-8 w-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-base font-medium text-gray-700 mb-1">
                   Drop files here or click to browse
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 mb-4">
                   Supports PDF, TXT, DOCX, CSV files
                 </p>
+
+                <div className="bg-gray-50 rounded-lg p-3 text-left max-w-xs mx-auto">
+                  <h4 className="text-xs font-medium text-gray-700 mb-2">
+                    For best results, upload:
+                  </h4>
+                  <div className="space-y-1 text-xs text-gray-600">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                      <span>
+                        <strong>Invoice</strong> - Product details, values
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                      <span>
+                        <strong>Packing List</strong> - Quantities, weights
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                      <span>
+                        <strong>Bill of Lading</strong> - Shipping info
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                      <span>
+                        <strong>Certificates</strong> - Origin, compliance
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <p className="text-xs text-gray-500">
+                      <strong>Tip:</strong> Upload 2-3 related documents for
+                      best analysis
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {uploadedFiles.length > 0 && (

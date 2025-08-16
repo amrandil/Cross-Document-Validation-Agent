@@ -154,7 +154,7 @@ async def analyze_uploaded_documents(
             f"Received file upload analysis request for bundle: {bundle_id}")
 
         # Initialize vision PDF processor
-        vision_processor = VisionPDFProcessor()
+        vision_processor = VisionPDFProcessor.get_instance()
 
         # Process uploaded files
         documents = []
@@ -286,7 +286,7 @@ async def analyze_documents_stream(
             yield f"data: {json.dumps({'type': 'connection', 'bundle_id': bundle_id, 'message': 'Stream connected'})}\n\n"
 
             # Process files (same as upload endpoint)
-            vision_processor = VisionPDFProcessor()
+            vision_processor = VisionPDFProcessor.get_instance()
             documents = []
             start_pre = time.time()
             logger.info(f"[SSE] Preprocessing started for bundle {bundle_id}")
@@ -433,11 +433,35 @@ async def get_agent_info(executor: FraudDetectionExecutor = Depends(get_fraud_ex
         )
 
 
+@router.post("/agent/models")
+async def update_agent_models(
+    model_configs: Dict[str, str],
+    executor: FraudDetectionExecutor = Depends(get_fraud_executor)
+):
+    """Update the language models used by the agent."""
+    try:
+        # Validate and update models
+        result = await executor.update_models(model_configs)
+        return JSONResponse(content=result)
+    except ValueError as e:
+        logger.error(f"Invalid model configuration: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid model configuration: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error updating agent models: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating agent models: {str(e)}"
+        )
+
+
 @router.get("/processor/info")
 async def get_processor_info():
     """Get information about the vision PDF processor."""
     try:
-        processor = VisionPDFProcessor()
+        processor = VisionPDFProcessor.get_instance()
         info = processor.get_processor_info()
         return JSONResponse(content=info)
     except Exception as e:

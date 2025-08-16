@@ -66,7 +66,7 @@ export default function Home() {
                     healthLoading ? "animate-spin" : ""
                   }`}
                 />
-                Test API
+                Test Connection
               </Button>
               {apiStatus === "connected" && (
                 <Badge

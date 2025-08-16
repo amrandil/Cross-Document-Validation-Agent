@@ -30,15 +30,22 @@ class VisionPDFProcessor:
         if VisionPDFProcessor._initialized:
             return
 
-        # Centralize model names so we can report them dynamically
-        self.vision_model_name = "gpt-4o"
-        self.summary_model_name = "gpt-4o"
+        # Use the same model from settings as default for all tasks
+        self.vision_model_name = settings.openai_model
+        self.summary_model_name = settings.openai_model
 
         # Vision LLM for comprehensive document analysis
         self.vision_llm = ChatOpenAI(
             model=self.vision_model_name,
             temperature=0.1,  # Low temperature for consistent extraction
             max_tokens=4096,  # Allow for comprehensive extraction
+            api_key=settings.openai_api_key
+        )
+
+        # Summary LLM for document summarization
+        self.summary_llm = ChatOpenAI(
+            model=self.summary_model_name,
+            temperature=0.1,  # Low temperature for consistent summaries
             api_key=settings.openai_api_key
         )
 
@@ -310,14 +317,8 @@ Original extracted content:
 """
 
         try:
-            # Use text-based LLM for summary generation
-            summary_llm = ChatOpenAI(
-                model=self.summary_model_name,
-                temperature=0.1,
-                api_key=settings.openai_api_key
-            )
-
-            response = summary_llm.invoke(summary_prompt)
+            # Use the instance summary LLM
+            response = self.summary_llm.invoke(summary_prompt)
 
             # Combine summary with original content
             final_content = f"""
@@ -399,8 +400,7 @@ Note: Summary generation failed, showing detailed extraction only
             # Test the new model
             test_llm = ChatOpenAI(
                 model=new_model,
-                temperature=0.2,
-                max_tokens=2048,
+                temperature=0.1,
                 api_key=settings.openai_api_key
             )
 
@@ -410,6 +410,7 @@ Note: Summary generation failed, showing detailed extraction only
 
             # Update if successful
             self.summary_model_name = new_model
+            self.summary_llm = test_llm
             logger.info(f"Successfully updated summary model to: {new_model}")
 
         except Exception as e:

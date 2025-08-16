@@ -282,7 +282,10 @@ export function FileUpload({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => removeFile(id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeFile(id);
+                                }}
                                 className="text-red-500 hover:text-red-700"
                               >
                                 <X className="h-4 w-4" />

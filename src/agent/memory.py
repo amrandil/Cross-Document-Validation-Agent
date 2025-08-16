@@ -5,9 +5,6 @@ from langchain.memory import ConversationBufferMemory
 from datetime import datetime
 
 from ..models.fraud import AgentExecution, AgentStep
-from ..utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class FraudDetectionMemory:
@@ -35,9 +32,6 @@ class FraudDetectionMemory:
         self.current_phase = "initial_observation"
         self.investigation_context: Dict[str, Any] = {}
 
-        logger.info(
-            f"Initialized memory for execution {execution_id}, bundle {bundle_id}")
-
     def add_step(self, step_type: str, content: str, tool_used: Optional[str] = None,
                  tool_input: Optional[Dict[str, Any]] = None, tool_output: Optional[str] = None) -> AgentStep:
         """Add a step to the agent execution trace."""
@@ -63,7 +57,6 @@ class FraudDetectionMemory:
                 self.conversation_memory.chat_memory.add_user_message(
                     f"RESULT: {tool_output}")
 
-        logger.debug(f"Added {step_type} step: {content[:100]}...")
         return step
 
     def add_observation(self, content: str) -> AgentStep:
@@ -81,18 +74,15 @@ class FraudDetectionMemory:
     def update_extracted_data(self, document_type: str, data: Dict[str, Any]):
         """Update extracted data for a document type."""
         self.extracted_data[document_type] = data
-        logger.debug(f"Updated extracted data for {document_type}")
 
     def add_analysis_result(self, analysis: str):
         """Add an analysis result to the collection."""
         self.analysis_results.append(analysis)
-        logger.debug(f"Added analysis result: {analysis[:100]}...")
 
     def set_phase(self, phase: str):
         """Set the current investigation phase."""
         self.current_phase = phase
         self.investigation_context["current_phase"] = phase
-        logger.info(f"Investigation phase changed to: {phase}")
 
     def update_context(self, key: str, value: Any):
         """Update investigation context."""
@@ -141,7 +131,6 @@ class FraudDetectionMemory:
     def clear_memory(self):
         """Clear conversation memory while preserving execution trace."""
         self.conversation_memory.clear()
-        logger.info("Cleared conversation memory")
 
     def get_agent_execution(self) -> AgentExecution:
         """Get current agent execution object."""

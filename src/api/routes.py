@@ -15,11 +15,8 @@ from ..agent.executor import FraudDetectionExecutor
 from ..models.api import AnalysisRequest, AnalysisResponse, HealthResponse, ErrorResponse
 from ..models.documents import DocumentBundle, Document, DocumentType
 from ..config import settings
-from ..utils.logging import get_logger
 from ..utils.exceptions import FraudDetectionError, DocumentProcessingError, AgentExecutionError
 from ..utils.vision_pdf_processor import VisionPDFProcessor
-
-logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -52,8 +49,6 @@ async def analyze_documents(
     start_time = time.time()
 
     try:
-        logger.info(
-            f"Received analysis request for bundle: {request.bundle_id}")
 
         # Generate bundle ID if not provided
         bundle_id = request.bundle_id or f"bundle_{uuid.uuid4().hex[:8]}"
@@ -98,33 +93,27 @@ async def analyze_documents(
             documents_processed=len(documents)
         )
 
-        logger.info(
-            f"Analysis completed for bundle {bundle_id} in {processing_time}ms")
         return response
 
     except AgentExecutionError as e:
-        logger.error(f"Agent execution error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent execution failed: {str(e)}"
         )
 
     except DocumentProcessingError as e:
-        logger.error(f"Document processing error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Document processing failed: {str(e)}"
         )
 
     except FraudDetectionError as e:
-        logger.error(f"Fraud detection error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fraud detection failed: {str(e)}"
         )
 
     except Exception as e:
-        logger.error(f"Unexpected error in analysis: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -150,9 +139,6 @@ async def analyze_uploaded_documents(
         if not bundle_id:
             bundle_id = f"bundle_{uuid.uuid4().hex[:8]}"
 
-        logger.info(
-            f"Received file upload analysis request for bundle: {bundle_id}")
-
         # Initialize vision PDF processor
         vision_processor = VisionPDFProcessor.get_instance()
 
@@ -169,7 +155,7 @@ async def analyze_uploaded_documents(
 
                 # Handle different file types
                 if filename.lower().endswith('.pdf') or VisionPDFProcessor.is_pdf(content):
-                    logger.info(f"Processing PDF with vision LLM: {filename}")
+
                     # Extract comprehensive content using vision LLM
                     content_str = vision_processor.extract_comprehensive_content(
                         pdf_bytes=content,
@@ -187,8 +173,7 @@ async def analyze_uploaded_documents(
                         for encoding in encodings:
                             try:
                                 content_str = content.decode(encoding)
-                                logger.info(
-                                    f"Successfully decoded {filename} using {encoding} encoding")
+
                                 break
                             except UnicodeDecodeError:
                                 continue
@@ -205,8 +190,7 @@ async def analyze_uploaded_documents(
                 documents.append(document)
 
             except Exception as e:
-                logger.error(
-                    f"Error processing file {file.filename}: {str(e)}")
+
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Error processing file {file.filename}: {str(e)}"
@@ -247,14 +231,11 @@ async def analyze_uploaded_documents(
             documents_processed=len(documents)
         )
 
-        logger.info(
-            f"File upload analysis completed for bundle {bundle_id} in {processing_time}ms")
         return response
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in file upload analysis: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -289,7 +270,7 @@ async def analyze_documents_stream(
             vision_processor = VisionPDFProcessor.get_instance()
             documents = []
             start_pre = time.time()
-            logger.info(f"[SSE] Preprocessing started for bundle {bundle_id}")
+
             yield f"data: {json.dumps({'type': 'preprocessing_started', 'bundle_id': bundle_id, 'message': 'Preprocessing files...'})}\n\n"
 
             for file in files:
@@ -310,7 +291,6 @@ async def analyze_documents_stream(
                             doc_type
                         )
                     except Exception as e:
-                        logger.error(f"Error extracting PDF {filename}: {e}")
                         yield f"data: {json.dumps({'type': 'file_error', 'filename': filename, 'message': f'Failed to extract {filename}: {str(e)}'})}\n\n"
                         raise
                 else:
@@ -343,8 +323,6 @@ async def analyze_documents_stream(
             bundle = DocumentBundle(bundle_id=bundle_id, documents=documents)
 
             elapsed_pre = int((time.time() - start_pre) * 1000)
-            logger.info(
-                f"[SSE] Preprocessing completed for bundle {bundle_id} in {elapsed_pre}ms")
             yield f"data: {json.dumps({'type': 'preprocessing_completed', 'bundle_id': bundle_id, 'count': len(documents), 'message': 'Preprocessing complete'})}\n\n"
 
             # Parse options
@@ -376,18 +354,16 @@ async def analyze_documents_stream(
                     # Send keep-alive (comment line per SSE spec)
                     yield f": keepalive {datetime.utcnow().isoformat()}\n\n"
                 except Exception as e:
-                    logger.error(f"Error in stream processing: {str(e)}")
                     break
 
             # Wait for analysis task to complete
             try:
                 await analysis_task
             except Exception as e:
-                logger.error(f"Analysis task failed: {str(e)}")
+                pass
 
         except Exception as e:
             error_msg = f"Streaming analysis failed: {str(e)}"
-            logger.error(error_msg)
             yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
         finally:
             # Clean up
@@ -426,7 +402,6 @@ async def get_agent_info(executor: FraudDetectionExecutor = Depends(get_fraud_ex
         info = executor.get_agent_info()
         return JSONResponse(content=info)
     except Exception as e:
-        logger.error(f"Error getting agent info: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting agent information: {str(e)}"
@@ -444,13 +419,11 @@ async def update_agent_models(
         result = await executor.update_models(model_configs)
         return JSONResponse(content=result)
     except ValueError as e:
-        logger.error(f"Invalid model configuration: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid model configuration: {str(e)}"
         )
     except Exception as e:
-        logger.error(f"Error updating agent models: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating agent models: {str(e)}"
@@ -465,7 +438,6 @@ async def get_processor_info():
         info = processor.get_processor_info()
         return JSONResponse(content=info)
     except Exception as e:
-        logger.error(f"Error getting processor info: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting processor information: {str(e)}"

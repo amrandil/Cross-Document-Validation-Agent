@@ -8,10 +8,7 @@ from datetime import datetime
 from .core import FraudDetectionAgent
 from ..models.documents import DocumentBundle
 from ..models.fraud import AgentExecution
-from ..utils.logging import get_logger
 from ..utils.exceptions import AgentExecutionError
-
-logger = get_logger(__name__)
 
 
 class FraudDetectionExecutor:
@@ -19,7 +16,6 @@ class FraudDetectionExecutor:
 
     def __init__(self):
         self.agent = FraudDetectionAgent()
-        logger.info("Initialized FraudDetectionExecutor")
 
     def execute_fraud_analysis(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None) -> AgentExecution:
         """Execute fraud analysis on a document bundle.
@@ -35,21 +31,15 @@ class FraudDetectionExecutor:
             AgentExecutionError: If execution fails
         """
         try:
-            logger.info(
-                f"Starting fraud analysis execution for bundle {bundle.bundle_id}")
-
             # Validate bundle
             self._validate_bundle(bundle)
 
             # Execute analysis using agent
             execution = self.agent.analyze_documents(bundle, options)
 
-            logger.info(
-                f"Fraud analysis execution completed: {execution.execution_id}")
             return execution
 
         except Exception as e:
-            logger.error(f"Fraud analysis execution failed: {str(e)}")
             raise AgentExecutionError(
                 f"Failed to execute fraud analysis: {str(e)}",
                 execution_id=None,
@@ -68,21 +58,15 @@ class FraudDetectionExecutor:
             AgentExecution: Complete execution trace with results
         """
         try:
-            logger.info(
-                f"Starting streaming fraud analysis for bundle {bundle.bundle_id}")
-
             # Validate bundle
             self._validate_bundle(bundle)
 
             # Execute streaming analysis using agent
             execution = await self.agent.analyze_documents_stream(bundle, options, stream_queue)
 
-            logger.info(
-                f"Streaming fraud analysis completed: {execution.execution_id}")
             return execution
 
         except Exception as e:
-            logger.error(f"Streaming fraud analysis failed: {str(e)}")
             if stream_queue:
                 await stream_queue.put({
                     "type": "error",
@@ -104,9 +88,7 @@ class FraudDetectionExecutor:
             )
 
         if not bundle.has_required_documents():
-            logger.warning(
-                f"Bundle {bundle.bundle_id} missing required documents")
-            # Don't fail - agent can still provide useful analysis
+            pass  # Don't fail - agent can still provide useful analysis
 
         # Check for minimum content
         for doc in bundle.documents:
@@ -185,13 +167,10 @@ class FraudDetectionExecutor:
                             "old_model": old_model,
                             "new_model": new_model
                         })
-                        logger.info(
-                            f"Updated main reasoning agent model to: {new_model}")
 
                     except Exception as e:
                         error_msg = f"Invalid model '{new_model}' for Main Reasoning Agent: {str(e)}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
 
             # Update vision processor models
             vision_processor = VisionPDFProcessor.get_instance()
@@ -208,12 +187,10 @@ class FraudDetectionExecutor:
                             "old_model": old_model,
                             "new_model": new_model
                         })
-                        logger.info(
-                            f"Updated vision model from {old_model} to: {new_model}")
+
                     except Exception as e:
                         error_msg = f"Invalid model '{new_model}' for Vision PDF Extraction: {str(e)}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
 
             if "document_summary" in model_configs:
                 new_model = model_configs["document_summary"]
@@ -226,12 +203,10 @@ class FraudDetectionExecutor:
                             "old_model": old_model,
                             "new_model": new_model
                         })
-                        logger.info(
-                            f"Updated summary model from {old_model} to: {new_model}")
+
                     except Exception as e:
                         error_msg = f"Invalid model '{new_model}' for Document Summary: {str(e)}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
 
             # Return results
             if errors and not updated_models:
@@ -251,5 +226,4 @@ class FraudDetectionExecutor:
             return result
 
         except Exception as e:
-            logger.error(f"Error in update_models: {str(e)}")
             raise

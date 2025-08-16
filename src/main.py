@@ -7,9 +7,6 @@ import uvicorn
 
 from .config import settings
 from .api.routes import router as api_router
-from .utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 # Create FastAPI application
 app = FastAPI(
@@ -56,14 +53,9 @@ def create_app() -> FastAPI:
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
-    logger.info(f"Environment: {settings.environment}")
-    logger.info(f"Debug mode: {settings.debug}")
-
     uvicorn.run(
         "src.main:app",
         host=settings.api_host,
         port=settings.api_port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
+        reload=settings.debug
     )

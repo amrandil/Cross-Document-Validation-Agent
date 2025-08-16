@@ -6,9 +6,6 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from ..models.documents import DocumentBundle
-from ..utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class FraudDetectionToolInput(BaseModel):
@@ -32,17 +29,10 @@ class BaseFraudDetectionTool(BaseTool, ABC):
             kwargs['description'] = self._description
 
         super().__init__(**kwargs)
-        # Use a property for logger instead of instance variable to avoid Pydantic validation issues
-
-    @property
-    def logger(self):
-        """Get logger for this tool."""
-        return get_logger(f"tools.{self.__class__.__name__}")
 
     def _run(self, bundle_data: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> str:
         """Execute the tool with the given bundle data."""
         try:
-            self.logger.info(f"Executing {self.name} tool")
             options = options or {}
 
             # Parse bundle data if needed
@@ -51,11 +41,9 @@ class BaseFraudDetectionTool(BaseTool, ABC):
             # Execute the specific tool logic
             result = self._execute(bundle, options)
 
-            self.logger.info(f"Successfully executed {self.name} tool")
             return result
 
         except Exception as e:
-            self.logger.error(f"Error executing {self.name} tool: {str(e)}")
             return f"Error executing {self.name}: {str(e)}"
 
     def _parse_bundle_data(self, bundle_data: Dict[str, Any]) -> DocumentBundle:
@@ -70,7 +58,6 @@ class BaseFraudDetectionTool(BaseTool, ABC):
                 raise ValueError(
                     f"Invalid bundle data type: {type(bundle_data)}")
         except Exception as e:
-            self.logger.error(f"Error parsing bundle data: {str(e)}")
             raise
 
     @abstractmethod

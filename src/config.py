@@ -31,10 +31,6 @@ class Settings(BaseSettings):
     algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=30)
 
-    # Logging
-    log_level: str = Field(default="INFO")
-    log_format: str = Field(default="json")
-
     # Rate Limiting
     rate_limit_requests: int = Field(default=100)
     rate_limit_window: int = Field(default=60)

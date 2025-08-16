@@ -7,9 +7,6 @@ from langchain_openai import ChatOpenAI
 from .base import BaseFraudDetectionTool
 from ..models.documents import DocumentBundle
 from ..config import settings
-from ..utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class ProductSubstitutionTool(BaseFraudDetectionTool):

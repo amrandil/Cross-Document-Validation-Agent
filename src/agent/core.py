@@ -14,10 +14,7 @@ from ..tools import get_all_tools
 from ..models.documents import DocumentBundle
 from ..models.fraud import FraudAnalysisResult, AgentExecution, FraudIndicator, FraudType
 from ..config import settings
-from ..utils.logging import get_logger
 from ..utils.exceptions import AgentExecutionError
-
-logger = get_logger(__name__)
 
 
 class FraudDetectionAgent:
@@ -37,9 +34,6 @@ class FraudDetectionAgent:
         # Create agent prompt template
         self.prompt_template = get_agent_prompt_template()
 
-        logger.info(
-            f"Initialized FraudDetectionAgent with {len(self.tools)} tools")
-
     def analyze_documents(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None) -> AgentExecution:
         """Analyze a document bundle for fraud using ReAct strategy."""
 
@@ -50,9 +44,6 @@ class FraudDetectionAgent:
         memory = FraudDetectionMemory(execution_id, bundle.bundle_id)
 
         try:
-            logger.info(
-                f"Starting fraud analysis for bundle {bundle.bundle_id}")
-
             # Phase 1: Initial Observation
             memory.set_phase("initial_observation")
             initial_observation = self._conduct_initial_observation(bundle)
@@ -81,12 +72,9 @@ class FraudDetectionAgent:
             # Complete the execution
             memory.agent_execution.complete_execution(fraud_analysis)
 
-            logger.info(
-                f"Completed fraud analysis for bundle {bundle.bundle_id}")
             return memory.get_agent_execution()
 
         except Exception as e:
-            logger.error(f"Error in fraud analysis: {str(e)}")
             memory.agent_execution.fail_execution(str(e))
             return memory.get_agent_execution()
 
@@ -116,9 +104,6 @@ class FraudDetectionAgent:
                 "total_phases": len(phases),
                 "message": "Starting fraud analysis..."
             })
-
-            logger.info(
-                f"Starting streaming fraud analysis for bundle {bundle.bundle_id}")
 
             # Phase 1: Initial Observation
             await self._send_phase_update(stream_queue, 1, "initial_observation", "Initial Observation", "Starting environmental assessment...")
@@ -175,12 +160,9 @@ class FraudDetectionAgent:
                 "message": "Analysis completed successfully"
             })
 
-            logger.info(
-                f"Completed streaming fraud analysis for bundle {bundle.bundle_id}")
             return memory.get_agent_execution()
 
         except Exception as e:
-            logger.error(f"Error in streaming fraud analysis: {str(e)}")
             memory.agent_execution.fail_execution(str(e))
 
             await self._send_stream_update(stream_queue, {
@@ -345,7 +327,6 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
-                logger.error(f"Error in {tool_name}: {str(e)}")
                 await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
 
         return validation_results
@@ -412,7 +393,6 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
-                logger.error(f"Error in {tool_name}: {str(e)}")
                 await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
 
         return pattern_results
@@ -463,7 +443,6 @@ class FraudDetectionAgent:
             return fraud_analysis
 
         except Exception as e:
-            logger.error(f"Error in evidence synthesis: {str(e)}")
             await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in evidence synthesis: {str(e)}")
             # Create fallback fraud analysis
             return self._create_fallback_analysis(bundle.bundle_id, all_results, str(e))
@@ -601,7 +580,6 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
-                logger.error(f"Error in {tool_name}: {str(e)}")
                 memory.add_observation(f"Error in {tool_name}: {str(e)}")
 
         return validation_results
@@ -663,7 +641,6 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
-                logger.error(f"Error in {tool_name}: {str(e)}")
                 memory.add_observation(f"Error in {tool_name}: {str(e)}")
 
         return pattern_results
@@ -713,7 +690,6 @@ class FraudDetectionAgent:
             return fraud_analysis
 
         except Exception as e:
-            logger.error(f"Error in evidence synthesis: {str(e)}")
             # Create fallback fraud analysis
             return self._create_fallback_analysis(bundle.bundle_id, all_results, str(e))
 

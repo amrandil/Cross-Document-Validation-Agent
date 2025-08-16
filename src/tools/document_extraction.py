@@ -7,9 +7,6 @@ from langchain_openai import ChatOpenAI
 from .base import BaseFraudDetectionTool
 from ..models.documents import DocumentBundle, DocumentType, Document
 from ..config import settings
-from ..utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class DocumentExtractionTool(BaseFraudDetectionTool):
@@ -40,9 +37,6 @@ class DocumentExtractionTool(BaseFraudDetectionTool):
             results = {}
 
             for document in bundle.documents:
-                self.logger.info(
-                    f"Extracting data from {document.document_type} document: {document.filename}")
-
                 extracted_data = self._extract_document_data(document)
                 results[document.document_type] = extracted_data
 
@@ -52,7 +46,6 @@ class DocumentExtractionTool(BaseFraudDetectionTool):
             return summary
 
         except Exception as e:
-            self.logger.error(f"Error in document extraction: {str(e)}")
             return f"Error extracting document data: {str(e)}"
 
     def _extract_document_data(self, document: Document) -> Dict[str, Any]:
@@ -95,8 +88,6 @@ class DocumentExtractionTool(BaseFraudDetectionTool):
             return extracted_data
 
         except Exception as e:
-            self.logger.error(
-                f"Error extracting data from {document.filename}: {str(e)}")
             return {"error": str(e), "filename": document.filename}
 
     def _get_extraction_schema(self, document_type: DocumentType) -> Dict[str, Any]:

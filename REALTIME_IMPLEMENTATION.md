@@ -267,7 +267,7 @@ Each tool has a specific icon for visual identification:
 Enable debug logging by setting environment variables:
 ```bash
 export DEBUG_STREAMING=true
-export LOG_LEVEL=DEBUG
+
 ```
 
 ## Conclusion

@@ -10,9 +10,6 @@ from langchain_core.messages import HumanMessage
 
 from ..models.documents import DocumentType
 from ..config import settings
-from ..utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class VisionPDFProcessor:
@@ -76,24 +73,17 @@ class VisionPDFProcessor:
             Comprehensive extracted and structured content
         """
         try:
-            logger.info(
-                f"Starting vision-based extraction for {filename} ({document_type.value})")
 
             # Convert PDF to images
             images = self._pdf_to_images(pdf_bytes)
 
             if not images:
-                logger.error(f"Failed to convert PDF to images: {filename}")
                 return f"[VISION EXTRACTION FAILED - NO IMAGES GENERATED FOR {filename}]"
-
-            logger.info(f"Converted {filename} to {len(images)} page images")
 
             # Process all pages with vision LLM
             all_content = []
 
             for page_num, image in enumerate(images, 1):
-                logger.info(
-                    f"Processing page {page_num}/{len(images)} of {filename}")
 
                 page_content = self._extract_page_content(
                     image,
@@ -108,8 +98,6 @@ class VisionPDFProcessor:
                         f"=== PAGE {page_num} ===\n{page_content}")
 
             if not all_content:
-                logger.error(
-                    f"No content extracted from any page of {filename}")
                 return f"[VISION EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
 
             # Combine all pages and add document summary
@@ -123,12 +111,9 @@ class VisionPDFProcessor:
                 len(images)
             )
 
-            logger.info(
-                f"Successfully extracted {len(final_content)} characters from {filename}")
             return final_content
 
         except Exception as e:
-            logger.error(f"Vision extraction failed for {filename}: {str(e)}")
             return f"[VISION EXTRACTION ERROR FOR {filename}: {str(e)}]"
 
     def _pdf_to_images(self, pdf_bytes: bytes) -> List[Image.Image]:
@@ -143,7 +128,6 @@ class VisionPDFProcessor:
             )
             return images
         except Exception as e:
-            logger.error(f"PDF to image conversion failed: {str(e)}")
             return []
 
     def _image_to_base64(self, image: Image.Image) -> str:
@@ -186,7 +170,6 @@ class VisionPDFProcessor:
             return response.content
 
         except Exception as e:
-            logger.error(f"Page {page_num} extraction failed: {str(e)}")
             return f"[PAGE {page_num} EXTRACTION FAILED: {str(e)}]"
 
     def _get_extraction_prompt(
@@ -336,7 +319,6 @@ Extraction Method: Vision LLM Analysis
             return final_content
 
         except Exception as e:
-            logger.error(f"Summary generation failed: {str(e)}")
             # Return original content if summary fails
             return f"""
 === DOCUMENT EXTRACTION ===
@@ -387,11 +369,8 @@ Note: Summary generation failed, showing detailed extraction only
             # Update if successful
             self.vision_model_name = new_model
             self.vision_llm = test_llm
-            logger.info(f"Successfully updated vision model to: {new_model}")
 
         except Exception as e:
-            logger.error(
-                f"Failed to update vision model to {new_model}: {str(e)}")
             raise ValueError(f"Invalid vision model '{new_model}': {str(e)}")
 
     def update_summary_model(self, new_model: str) -> None:
@@ -411,9 +390,6 @@ Note: Summary generation failed, showing detailed extraction only
             # Update if successful
             self.summary_model_name = new_model
             self.summary_llm = test_llm
-            logger.info(f"Successfully updated summary model to: {new_model}")
 
         except Exception as e:
-            logger.error(
-                f"Failed to update summary model to {new_model}: {str(e)}")
             raise ValueError(f"Invalid summary model '{new_model}': {str(e)}")

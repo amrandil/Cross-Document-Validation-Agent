@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI-powered agent for detecting fraud in customs declaration documents",
+    description="LLM-powered agent for detecting fraud in customs declaration documents",
     docs_url="/docs",
     redoc_url="/redoc"
 )

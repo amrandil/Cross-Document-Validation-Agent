@@ -50,7 +50,7 @@ export default function Home() {
               </div>
               <div className="hidden md:flex items-center space-x-2 text-sm text-gray-600">
                 <Shield className="w-4 h-4 text-gray-500" />
-                <span>AI-Powered Cross-Document Validation Agent</span>
+                <span>LLM-Powered Cross-Document Validation Agent</span>
               </div>
             </div>
             <div className="flex items-center space-x-3">

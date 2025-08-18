@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from .base import BaseFraudDetectionTool
 from ..models.documents import DocumentBundle, DocumentType, Document
 from ..config import settings
+from ..utils.logging_config import LLMLoggingWrapper
 
 
 class DocumentExtractionTool(BaseFraudDetectionTool):
@@ -25,11 +26,13 @@ class DocumentExtractionTool(BaseFraudDetectionTool):
     @property
     def llm(self):
         """Get ChatOpenAI instance for this tool."""
-        return ChatOpenAI(
+        llm_instance = ChatOpenAI(
             model=settings.openai_model,
             temperature=settings.openai_temperature,
             api_key=settings.openai_api_key
         )
+        # Wrap with logging
+        return LLMLoggingWrapper(llm_instance, settings.openai_model)
 
     def _execute(self, bundle: DocumentBundle, options: Dict[str, Any]) -> str:
         """Extract structured data from all documents in the bundle."""

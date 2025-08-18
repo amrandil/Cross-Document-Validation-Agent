@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     confidence_threshold: float = Field(
         default=0.7, description="Fraud confidence threshold")
 
+    # Logging Configuration
+    log_level: str = Field(
+        default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

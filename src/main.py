@@ -7,6 +7,10 @@ import uvicorn
 
 from .config import settings
 from .api.routes import router as api_router
+from .utils.logging_config import workflow_logger, log_step
+
+# Initialize logging
+log_step("start", message="Initializing Multi-Document Fraud Detection Agent")
 
 # Create FastAPI application
 app = FastAPI(
@@ -17,6 +21,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+log_step("complete", message="FastAPI application created",
+         title=settings.app_name, version=settings.app_version)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -26,8 +33,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+log_step("complete", message="CORS middleware configured")
+
 # Include API routes
 app.include_router(api_router, prefix=settings.api_prefix)
+
+log_step("complete", message="API routes included", prefix=settings.api_prefix)
 
 
 @app.get("/")

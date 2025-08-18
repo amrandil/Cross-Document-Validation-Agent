@@ -17,6 +17,11 @@ from ..models.documents import DocumentBundle, Document, DocumentType
 from ..config import settings
 from ..utils.exceptions import FraudDetectionError, DocumentProcessingError, AgentExecutionError
 from ..utils.vision_pdf_processor import VisionPDFProcessor
+from ..utils.logging_config import (
+    log_step, log_document, log_performance, log_error,
+    log_llm, log_agent, log_fraud, set_streaming_bundle_id,
+    add_streaming_callback, remove_streaming_callback
+)
 
 router = APIRouter()
 
@@ -27,6 +32,7 @@ active_streams: Dict[str, asyncio.Queue] = {}
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
+    log_step("health_check", endpoint="/health")
     return HealthResponse(
         status="healthy",
         version=settings.app_version,
@@ -47,15 +53,18 @@ async def analyze_documents(
     comprehensive fraud analysis using the ReAct agent.
     """
     start_time = time.time()
+    bundle_id = request.bundle_id or f"bundle_{uuid.uuid4().hex[:8]}"
+
+    log_step("start", message="Document analysis request received",
+             bundle_id=bundle_id, documents_count=len(request.documents))
 
     try:
-
         # Generate bundle ID if not provided
         bundle_id = request.bundle_id or f"bundle_{uuid.uuid4().hex[:8]}"
 
         # Convert request documents to Document objects
         documents = []
-        for doc_data in request.documents:
+        for i, doc_data in enumerate(request.documents):
             try:
                 document = Document(
                     document_type=DocumentType(doc_data["document_type"]),
@@ -64,11 +73,27 @@ async def analyze_documents(
                     metadata=doc_data.get("metadata", {})
                 )
                 documents.append(document)
+
+                # Log document processing
+                content_size = len(doc_data["content"])
+                log_document(
+                    doc_type=doc_data["document_type"],
+                    file_size=f"{content_size:,} chars",
+                    pages=doc_data.get("metadata", {}).get("pages", 1),
+                    filename=doc_data["filename"],
+                    bundle_id=bundle_id
+                )
+
             except ValueError as e:
+                log_error("validation_error", f"Invalid document type: {doc_data.get('document_type')}",
+                          bundle_id=bundle_id, error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid document type: {doc_data.get('document_type')}. {str(e)}"
                 )
+
+        log_step("complete", message="Documents processed",
+                 bundle_id=bundle_id, documents_count=len(documents))
 
         # Create document bundle
         bundle = DocumentBundle(
@@ -77,10 +102,22 @@ async def analyze_documents(
         )
 
         # Execute fraud analysis
+        log_step("start", message="Starting fraud analysis",
+                 bundle_id=bundle_id)
         execution = executor.execute_fraud_analysis(bundle, request.options)
 
         # Calculate processing time
-        processing_time = int((time.time() - start_time) * 1000)
+        processing_time = time.time() - start_time
+        log_performance("total_analysis", processing_time, bundle_id=bundle_id)
+
+        # Log fraud detection results
+        if execution.fraud_analysis:
+            confidence = execution.fraud_analysis.confidence
+            indicators = execution.fraud_analysis.indicators
+            log_fraud(confidence, indicators, bundle_id=bundle_id)
+
+        log_step("complete", message="Fraud analysis completed",
+                 bundle_id=bundle_id, execution_id=execution.execution_id)
 
         # Create response
         response = AnalysisResponse(
@@ -89,13 +126,15 @@ async def analyze_documents(
             execution_id=execution.execution_id,
             agent_execution=execution,
             fraud_analysis=execution.fraud_analysis,
-            processing_time_ms=processing_time,
+            processing_time_ms=int(processing_time * 1000),
             documents_processed=len(documents)
         )
 
         return response
 
     except AgentExecutionError as e:
+        log_error("agent_execution_error", str(e), bundle_id=bundle_id,
+                  execution_id=getattr(e, 'execution_id', None))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent execution failed: {str(e)}"
@@ -139,22 +178,36 @@ async def analyze_uploaded_documents(
         if not bundle_id:
             bundle_id = f"bundle_{uuid.uuid4().hex[:8]}"
 
+        log_step("start", message="File upload analysis request received",
+                 bundle_id=bundle_id, files_count=len(files))
+
         # Initialize vision PDF processor
         vision_processor = VisionPDFProcessor.get_instance()
 
         # Process uploaded files
         documents = []
-        for file in files:
+        for i, file in enumerate(files):
             try:
+                # Log file upload
+                filename = file.filename or "unknown"
+                log_step("upload", message=f"Processing file {i+1}/{len(files)}",
+                         filename=filename, bundle_id=bundle_id)
+
                 # Read file content
                 content = await file.read()
-                filename = file.filename or "unknown"
+                file_size = len(content)
+                log_step("preprocess", message="File content read",
+                         filename=filename, size=f"{file_size:,} bytes", bundle_id=bundle_id)
 
                 # Determine document type from filename first (needed for vision processing)
                 doc_type = _determine_document_type(filename)
+                log_step("preprocess", message="Document type determined",
+                         filename=filename, doc_type=doc_type, bundle_id=bundle_id)
 
                 # Handle different file types
                 if filename.lower().endswith('.pdf') or VisionPDFProcessor.is_pdf(content):
+                    log_step("preprocess", message="Processing PDF with vision LLM",
+                             filename=filename, bundle_id=bundle_id)
 
                     # Extract comprehensive content using vision LLM
                     content_str = vision_processor.extract_comprehensive_content(
@@ -162,7 +215,13 @@ async def analyze_uploaded_documents(
                         filename=filename,
                         document_type=doc_type
                     )
+
+                    log_step("preprocess", message="PDF content extracted",
+                             filename=filename, content_length=f"{len(content_str):,} chars", bundle_id=bundle_id)
                 else:
+                    log_step("preprocess", message="Processing text file",
+                             filename=filename, bundle_id=bundle_id)
+
                     # Try to decode as text file
                     try:
                         content_str = content.decode('utf-8')
@@ -173,12 +232,15 @@ async def analyze_uploaded_documents(
                         for encoding in encodings:
                             try:
                                 content_str = content.decode(encoding)
-
+                                log_step("preprocess", message=f"File decoded with {encoding}",
+                                         filename=filename, bundle_id=bundle_id)
                                 break
                             except UnicodeDecodeError:
                                 continue
 
                         if content_str is None:
+                            log_error("encoding_error", f"Could not decode file {filename}",
+                                      bundle_id=bundle_id, filename=filename)
                             raise ValueError(
                                 f"Could not decode file {filename} - unsupported encoding or binary format")
 
@@ -189,18 +251,36 @@ async def analyze_uploaded_documents(
                 )
                 documents.append(document)
 
-            except Exception as e:
+                # Log document creation
+                log_document(
+                    doc_type=doc_type,
+                    file_size=f"{len(content_str):,} chars",
+                    pages=1,  # Default for now
+                    filename=filename,
+                    bundle_id=bundle_id
+                )
 
+                log_step("complete", message=f"File {i+1} processed successfully",
+                         filename=filename, bundle_id=bundle_id)
+
+            except Exception as e:
+                log_error("file_processing_error", f"Error processing file {file.filename}",
+                          bundle_id=bundle_id, filename=file.filename, error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Error processing file {file.filename}: {str(e)}"
                 )
 
         if not documents:
+            log_error("no_documents", "No valid documents provided",
+                      bundle_id=bundle_id)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No valid documents provided"
             )
+
+        log_step("complete", message="All files processed",
+                 bundle_id=bundle_id, documents_count=len(documents))
 
         # Create document bundle
         bundle = DocumentBundle(
@@ -215,10 +295,22 @@ async def analyze_uploaded_documents(
             options_dict = {}
 
         # Execute fraud analysis
+        log_step("start", message="Starting fraud analysis",
+                 bundle_id=bundle_id)
         execution = executor.execute_fraud_analysis(bundle, options_dict)
 
         # Calculate processing time
-        processing_time = int((time.time() - start_time) * 1000)
+        processing_time = time.time() - start_time
+        log_performance("total_analysis", processing_time, bundle_id=bundle_id)
+
+        # Log fraud detection results
+        if execution.fraud_analysis:
+            confidence = execution.fraud_analysis.confidence
+            indicators = execution.fraud_analysis.indicators
+            log_fraud(confidence, indicators, bundle_id=bundle_id)
+
+        log_step("complete", message="Fraud analysis completed",
+                 bundle_id=bundle_id, execution_id=execution.execution_id)
 
         # Create response
         response = AnalysisResponse(
@@ -227,7 +319,7 @@ async def analyze_uploaded_documents(
             execution_id=execution.execution_id,
             agent_execution=execution,
             fraud_analysis=execution.fraud_analysis,
-            processing_time_ms=processing_time,
+            processing_time_ms=int(processing_time * 1000),
             documents_processed=len(documents)
         )
 
@@ -249,14 +341,17 @@ async def analyze_documents_stream(
     options: str = Form("{}"),
     executor: FraudDetectionExecutor = Depends(get_fraud_executor)
 ):
-    """Stream real-time fraud analysis updates using Server-Sent Events."""
+    """Streaming endpoint for real-time document analysis with detailed preprocessing updates."""
 
+    # Generate bundle ID if not provided
     if not bundle_id:
         bundle_id = f"bundle_{uuid.uuid4().hex[:8]}"
 
-    # Create a queue for this stream
+    # Set up streaming logging
+    set_streaming_bundle_id(bundle_id)
+
+    # Create a queue for streaming updates
     stream_queue = asyncio.Queue()
-    active_streams[bundle_id] = stream_queue
 
     async def stream_analysis():
         try:
@@ -266,34 +361,61 @@ async def analyze_documents_stream(
             yield f"retry: 2000\n\n"
             yield f"data: {json.dumps({'type': 'connection', 'bundle_id': bundle_id, 'message': 'Stream connected'})}\n\n"
 
-            # Process files (same as upload endpoint)
+            # Process files with detailed streaming updates
             vision_processor = VisionPDFProcessor.get_instance()
             documents = []
             start_pre = time.time()
 
             yield f"data: {json.dumps({'type': 'preprocessing_started', 'bundle_id': bundle_id, 'message': 'Preprocessing files...'})}\n\n"
 
-            for file in files:
+            for i, file in enumerate(files):
                 content = await file.read()
                 filename = file.filename or "unknown"
                 doc_type = _determine_document_type(filename)
 
                 # Announce file start
-                yield f"data: {json.dumps({'type': 'file_started', 'filename': filename, 'document_type': doc_type.value, 'message': f'Starting to process {filename}'})}\n\n"
+                yield f"data: {json.dumps({
+                    'type': 'file_started',
+                    'filename': filename,
+                    'document_type': doc_type.value,
+                    'file_number': i + 1,
+                    'total_files': len(files),
+                    'message': f'Starting to process {filename} ({i+1}/{len(files)})'
+                })}\n\n"
 
                 if filename.lower().endswith('.pdf') or VisionPDFProcessor.is_pdf(content):
-                    # Run potentially slow PDF processing without blocking event loop
+                    # Set up streaming callback for this file
+                    async def streaming_callback(update):
+                        # Send preprocessing updates to the client
+                        yield f"data: {json.dumps(update)}\n\n"
+
+                    add_streaming_callback(streaming_callback)
+
                     try:
-                        content_str = await asyncio.to_thread(
-                            vision_processor.extract_comprehensive_content,
+                        # Use async version for streaming updates
+                        content_str = await vision_processor.extract_comprehensive_content_async(
                             content,
                             filename,
                             doc_type
                         )
                     except Exception as e:
-                        yield f"data: {json.dumps({'type': 'file_error', 'filename': filename, 'message': f'Failed to extract {filename}: {str(e)}'})}\n\n"
+                        yield f"data: {json.dumps({
+                            'type': 'file_error',
+                            'filename': filename,
+                            'message': f'Failed to extract {filename}: {str(e)}'
+                        })}\n\n"
                         raise
+                    finally:
+                        remove_streaming_callback(streaming_callback)
                 else:
+                    # Handle text files
+                    yield f"data: {json.dumps({
+                        'type': 'preprocessing_step',
+                        'step': 'processing_text_file',
+                        'filename': filename,
+                        'message': f'Processing text file {filename}'
+                    })}\n\n"
+
                     try:
                         content_str = content.decode('utf-8')
                     except UnicodeDecodeError:
@@ -302,6 +424,13 @@ async def analyze_documents_stream(
                         for encoding in encodings:
                             try:
                                 content_str = content.decode(encoding)
+                                yield f"data: {json.dumps({
+                                    'type': 'preprocessing_step',
+                                    'step': 'file_decoded',
+                                    'filename': filename,
+                                    'encoding': encoding,
+                                    'message': f'File decoded with {encoding}'
+                                })}\n\n"
                                 break
                             except UnicodeDecodeError:
                                 continue
@@ -317,13 +446,25 @@ async def analyze_documents_stream(
                 documents.append(document)
 
                 # Announce file completion
-                yield f"data: {json.dumps({'type': 'file_completed', 'filename': filename, 'message': f'Completed processing {filename}'})}\n\n"
+                yield f"data: {json.dumps({
+                    'type': 'file_completed',
+                    'filename': filename,
+                    'file_number': i + 1,
+                    'total_files': len(files),
+                    'message': f'Completed processing {filename} ({i+1}/{len(files)})'
+                })}\n\n"
 
             # Create bundle
             bundle = DocumentBundle(bundle_id=bundle_id, documents=documents)
 
             elapsed_pre = int((time.time() - start_pre) * 1000)
-            yield f"data: {json.dumps({'type': 'preprocessing_completed', 'bundle_id': bundle_id, 'count': len(documents), 'message': 'Preprocessing complete'})}\n\n"
+            yield f"data: {json.dumps({
+                'type': 'preprocessing_completed',
+                'bundle_id': bundle_id,
+                'count': len(documents),
+                'duration_ms': elapsed_pre,
+                'message': f'Preprocessing complete - {len(documents)} files processed in {elapsed_pre/1000:.1f}s'
+            })}\n\n"
 
             # Parse options
             try:
@@ -364,22 +505,16 @@ async def analyze_documents_stream(
 
         except Exception as e:
             error_msg = f"Streaming analysis failed: {str(e)}"
-            yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-        finally:
-            # Clean up
-            if bundle_id in active_streams:
-                del active_streams[bundle_id]
-            yield f"data: {json.dumps({'type': 'complete', 'message': 'Analysis complete'})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_error', 'error': error_msg})}\n\n"
+            log_error("stream_error", error_msg, bundle_id=bundle_id)
 
     return StreamingResponse(
         stream_analysis(),
-        media_type="text/event-stream",
+        media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control"
+            "Content-Type": "text/event-stream",
         }
     )
 

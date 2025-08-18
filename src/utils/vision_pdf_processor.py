@@ -2,6 +2,7 @@
 
 import io
 import base64
+import asyncio
 from typing import List, Optional, Dict, Any
 from PIL import Image
 import pdf2image
@@ -10,6 +11,7 @@ from langchain_core.messages import HumanMessage
 
 from ..models.documents import DocumentType
 from ..config import settings
+from .logging_config import log_step, log_performance, log_error, log_llm, log_vision_processing, log_preprocessing_step
 
 
 class VisionPDFProcessor:
@@ -55,6 +57,134 @@ class VisionPDFProcessor:
             cls._instance = cls()
         return cls._instance
 
+    async def extract_comprehensive_content_async(
+        self,
+        pdf_bytes: bytes,
+        filename: str,
+        document_type: DocumentType
+    ) -> str:
+        """
+        Extract comprehensive content from PDF using vision-enabled LLM with streaming updates.
+        """
+        import time
+        start_time = time.time()
+
+        log_step("start", message="PDF vision extraction started",
+                 filename=filename, doc_type=document_type, file_size=f"{len(pdf_bytes):,} bytes")
+
+        # Stream preprocessing start
+        await log_preprocessing_step("start", filename=filename,
+                                     doc_type=document_type.value,
+                                     file_size=f"{len(pdf_bytes):,} bytes")
+
+        try:
+            # Convert PDF to images
+            log_step("preprocess", message="Converting PDF to images",
+                     filename=filename)
+            await log_preprocessing_step("converting_pdf", filename=filename)
+
+            images = self._pdf_to_images(pdf_bytes)
+
+            if not images:
+                log_error("pdf_conversion_error",
+                          f"No images generated for {filename}", filename=filename)
+                await log_preprocessing_step("error", filename=filename,
+                                             error="No images generated from PDF")
+                return f"[VISION EXTRACTION FAILED - NO IMAGES GENERATED FOR {filename}]"
+
+            log_step("preprocess", message="PDF converted to images",
+                     filename=filename, pages=len(images))
+            await log_preprocessing_step("pdf_converted", filename=filename, pages=len(images))
+
+            # Process all pages with vision LLM
+            all_content = []
+
+            for page_num, image in enumerate(images, 1):
+                log_step("preprocess", message=f"Processing page {page_num}/{len(images)}",
+                         filename=filename, page=page_num, total_pages=len(images))
+
+                # Stream page processing start
+                await log_vision_processing(filename=filename, page=page_num,
+                                            total_pages=len(images), status="started")
+
+                page_content = await self._extract_page_content_async(
+                    image,
+                    page_num,
+                    len(images),
+                    document_type,
+                    filename
+                )
+
+                if page_content:
+                    all_content.append(
+                        f"=== PAGE {page_num} ===\n{page_content}")
+                    log_step("complete", message=f"Page {page_num} content extracted",
+                             filename=filename, page=page_num, content_length=f"{len(page_content):,} chars")
+
+                    # Stream page completion
+                    await log_vision_processing(filename=filename, page=page_num,
+                                                total_pages=len(images), status="completed",
+                                                content_length=f"{len(page_content):,} chars")
+                else:
+                    log_error("page_extraction_error", f"No content extracted from page {page_num}",
+                              filename=filename, page=page_num)
+
+                    # Stream page error
+                    await log_vision_processing(filename=filename, page=page_num,
+                                                total_pages=len(images), status="error")
+
+            if not all_content:
+                log_error(
+                    "extraction_failed", f"No content extracted from {filename}", filename=filename)
+                await log_preprocessing_step("error", filename=filename,
+                                             error="No content extracted from any page")
+                return f"[VISION EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
+
+            # Combine all pages and add document summary
+            log_step("preprocess", message="Combining page content",
+                     filename=filename)
+            await log_preprocessing_step("combining_content", filename=filename)
+
+            combined_content = "\n\n".join(all_content)
+
+            # Generate document summary and structure
+            log_step("preprocess",
+                     message="Generating document summary", filename=filename)
+            await log_preprocessing_step("generating_summary", filename=filename)
+
+            final_content = await self._generate_document_summary_async(
+                combined_content,
+                document_type,
+                filename,
+                len(images)
+            )
+
+            extraction_time = time.time() - start_time
+            log_performance("pdf_vision_extraction", extraction_time,
+                            filename=filename, pages=len(images))
+
+            log_step("complete", message="PDF vision extraction completed",
+                     filename=filename, final_length=f"{len(final_content):,} chars",
+                     extraction_time=f"{extraction_time:.2f}s")
+
+            # Stream completion
+            await log_preprocessing_step("completed", filename=filename,
+                                         final_length=f"{len(final_content):,} chars",
+                                         extraction_time=f"{extraction_time:.2f}s")
+
+            return final_content
+
+        except Exception as e:
+            extraction_time = time.time() - start_time
+            log_error("vision_extraction_error", f"Vision extraction failed for {filename}",
+                      filename=filename, error=str(e), extraction_time=f"{extraction_time:.2f}s")
+
+            # Stream error
+            await log_preprocessing_step("error", filename=filename,
+                                         error=str(e), extraction_time=f"{extraction_time:.2f}s")
+
+            return f"[VISION EXTRACTION ERROR FOR {filename}: {str(e)}]"
+
     def extract_comprehensive_content(
         self,
         pdf_bytes: bytes,
@@ -62,28 +192,62 @@ class VisionPDFProcessor:
         document_type: DocumentType
     ) -> str:
         """
-        Extract comprehensive content from PDF using vision-enabled LLM.
-
-        Args:
-            pdf_bytes: Raw PDF file bytes
-            filename: Original filename for context
-            document_type: Type of document for specialized extraction
-
-        Returns:
-            Comprehensive extracted and structured content
+        Synchronous wrapper for extract_comprehensive_content_async.
         """
         try:
+            # Try to get the current event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're in an async context, run the async version
+                return loop.run_until_complete(
+                    self.extract_comprehensive_content_async(
+                        pdf_bytes, filename, document_type)
+                )
+            else:
+                # If no event loop is running, create a new one
+                return asyncio.run(
+                    self.extract_comprehensive_content_async(
+                        pdf_bytes, filename, document_type)
+                )
+        except RuntimeError:
+            # Fallback to synchronous processing if async is not available
+            return self._extract_comprehensive_content_sync(pdf_bytes, filename, document_type)
 
+    def _extract_comprehensive_content_sync(
+        self,
+        pdf_bytes: bytes,
+        filename: str,
+        document_type: DocumentType
+    ) -> str:
+        """
+        Synchronous version of extract_comprehensive_content for fallback.
+        """
+        import time
+        start_time = time.time()
+
+        log_step("start", message="PDF vision extraction started",
+                 filename=filename, doc_type=document_type, file_size=f"{len(pdf_bytes):,} bytes")
+
+        try:
             # Convert PDF to images
+            log_step("preprocess", message="Converting PDF to images",
+                     filename=filename)
             images = self._pdf_to_images(pdf_bytes)
 
             if not images:
+                log_error("pdf_conversion_error",
+                          f"No images generated for {filename}", filename=filename)
                 return f"[VISION EXTRACTION FAILED - NO IMAGES GENERATED FOR {filename}]"
+
+            log_step("preprocess", message="PDF converted to images",
+                     filename=filename, pages=len(images))
 
             # Process all pages with vision LLM
             all_content = []
 
             for page_num, image in enumerate(images, 1):
+                log_step("preprocess", message=f"Processing page {page_num}/{len(images)}",
+                         filename=filename, page=page_num, total_pages=len(images))
 
                 page_content = self._extract_page_content(
                     image,
@@ -96,14 +260,25 @@ class VisionPDFProcessor:
                 if page_content:
                     all_content.append(
                         f"=== PAGE {page_num} ===\n{page_content}")
+                    log_step("complete", message=f"Page {page_num} content extracted",
+                             filename=filename, page=page_num, content_length=f"{len(page_content):,} chars")
+                else:
+                    log_error("page_extraction_error", f"No content extracted from page {page_num}",
+                              filename=filename, page=page_num)
 
             if not all_content:
+                log_error(
+                    "extraction_failed", f"No content extracted from {filename}", filename=filename)
                 return f"[VISION EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
 
             # Combine all pages and add document summary
+            log_step("preprocess", message="Combining page content",
+                     filename=filename)
             combined_content = "\n\n".join(all_content)
 
             # Generate document summary and structure
+            log_step("preprocess",
+                     message="Generating document summary", filename=filename)
             final_content = self._generate_document_summary(
                 combined_content,
                 document_type,
@@ -111,9 +286,20 @@ class VisionPDFProcessor:
                 len(images)
             )
 
+            extraction_time = time.time() - start_time
+            log_performance("pdf_vision_extraction", extraction_time,
+                            filename=filename, pages=len(images))
+
+            log_step("complete", message="PDF vision extraction completed",
+                     filename=filename, final_length=f"{len(final_content):,} chars",
+                     extraction_time=f"{extraction_time:.2f}s")
+
             return final_content
 
         except Exception as e:
+            extraction_time = time.time() - start_time
+            log_error("vision_extraction_error", f"Vision extraction failed for {filename}",
+                      filename=filename, error=str(e), extraction_time=f"{extraction_time:.2f}s")
             return f"[VISION EXTRACTION ERROR FOR {filename}: {str(e)}]"
 
     def _pdf_to_images(self, pdf_bytes: bytes) -> List[Image.Image]:
@@ -136,6 +322,41 @@ class VisionPDFProcessor:
         image.save(buffer, format='PNG')
         img_str = base64.b64encode(buffer.getvalue()).decode()
         return img_str
+
+    async def _extract_page_content_async(
+        self,
+        image: Image.Image,
+        page_num: int,
+        total_pages: int,
+        document_type: DocumentType,
+        filename: str
+    ) -> str:
+        """Extract content from a single page using vision LLM."""
+        try:
+            # Convert image to base64
+            image_b64 = self._image_to_base64(image)
+
+            # Get document-specific extraction prompt
+            prompt = self._get_extraction_prompt(
+                document_type, page_num, total_pages, filename)
+
+            # Create message with image
+            message = HumanMessage(
+                content=[
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image_b64}"}
+                    }
+                ]
+            )
+
+            # Get response from vision LLM
+            response = await self.vision_llm.ainvoke([message])
+            return response.content
+
+        except Exception as e:
+            return f"[PAGE {page_num} EXTRACTION FAILED: {str(e)}]"
 
     def _extract_page_content(
         self,
@@ -270,6 +491,64 @@ IMPORTANT INSTRUCTIONS:
 - Include page layout context (where information appears)
 
 Provide comprehensive, structured extraction suitable for fraud detection analysis.
+"""
+
+    async def _generate_document_summary_async(
+        self,
+        combined_content: str,
+        document_type: DocumentType,
+        filename: str,
+        page_count: int
+    ) -> str:
+        """Generate a comprehensive document summary with key data points."""
+
+        summary_prompt = f"""
+Based on the comprehensive page-by-page extraction below, create a MASTER DOCUMENT SUMMARY for this {document_type.value} ({filename}, {page_count} pages).
+
+PROVIDE:
+1. **DOCUMENT OVERVIEW**: Type, number, date, parties involved
+2. **KEY DATA EXTRACTION**: All critical numbers, amounts, quantities, dates
+3. **ENTITY INFORMATION**: All companies, addresses, contacts, officials
+4. **TRANSACTION DETAILS**: Products, services, financial terms, logistics
+5. **REGULATORY DATA**: Certifications, codes, compliance information
+6. **CROSS-REFERENCES**: Links between different data points
+7. **FRAUD DETECTION FOCUS**: Highlight data points critical for fraud analysis
+
+STRUCTURE THE SUMMARY FOR MAXIMUM UTILITY IN FRAUD DETECTION ANALYSIS.
+
+Original extracted content:
+{combined_content}
+"""
+
+        try:
+            # Use the instance summary LLM
+            response = await self.summary_llm.ainvoke(summary_prompt)
+
+            # Combine summary with original content
+            final_content = f"""
+=== COMPREHENSIVE DOCUMENT ANALYSIS ===
+Document: {filename}
+Type: {document_type.value}
+Pages: {page_count}
+Extraction Method: Vision LLM Analysis
+
+{response.content}
+
+=== DETAILED PAGE-BY-PAGE EXTRACTION ===
+{combined_content}
+"""
+            return final_content
+
+        except Exception as e:
+            # Return original content if summary fails
+            return f"""
+=== DOCUMENT EXTRACTION ===
+Document: {filename}
+Type: {document_type.value}
+Pages: {page_count}
+Note: Summary generation failed, showing detailed extraction only
+
+{combined_content}
 """
 
     def _generate_document_summary(

@@ -72,6 +72,23 @@ interface StreamUpdate {
   fraud_detected?: boolean;
   risk_level?: string;
   error?: string;
+  // New preprocessing fields
+  filename?: string;
+  file_number?: number;
+  total_files?: number;
+  document_type?: string;
+  step?: string;
+  page?: number;
+  total_pages?: number;
+  status?: string;
+  content_length?: string;
+  extraction_time?: string;
+  duration_ms?: number;
+  encoding?: string;
+  doc_type?: string;
+  file_size?: string;
+  pages?: number;
+  count?: number;
 }
 
 interface RealTimeAnalysisProps {
@@ -579,6 +596,293 @@ export default function RealTimeAnalysis({
                         {update.message && (
                           <p className="text-sm text-green-700 mt-1">
                             {update.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle preprocessing steps
+              if (update.type === "preprocessing_step") {
+                const getStepIcon = (step: string) => {
+                  switch (step) {
+                    case "start":
+                      return <FileText className="h-4 w-4" />;
+                    case "converting_pdf":
+                      return <Settings className="h-4 w-4" />;
+                    case "pdf_converted":
+                      return <CheckCircle className="h-4 w-4" />;
+                    case "combining_content":
+                      return <Database className="h-4 w-4" />;
+                    case "generating_summary":
+                      return <Brain className="h-4 w-4" />;
+                    case "completed":
+                      return <CheckCircle className="h-4 w-4" />;
+                    case "error":
+                      return <AlertTriangle className="h-4 w-4" />;
+                    case "processing_text_file":
+                      return <FileText className="h-4 w-4" />;
+                    case "file_decoded":
+                      return <CheckCircle className="h-4 w-4" />;
+                    default:
+                      return <Activity className="h-4 w-4" />;
+                  }
+                };
+
+                const getStepColor = (step: string) => {
+                  switch (step) {
+                    case "start":
+                      return "bg-blue-100 text-blue-800 border-blue-200";
+                    case "converting_pdf":
+                    case "combining_content":
+                    case "generating_summary":
+                    case "processing_text_file":
+                      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                    case "pdf_converted":
+                    case "completed":
+                    case "file_decoded":
+                      return "bg-green-100 text-green-800 border-green-200";
+                    case "error":
+                      return "bg-red-100 text-red-800 border-red-200";
+                    default:
+                      return "bg-gray-100 text-gray-800 border-gray-200";
+                  }
+                };
+
+                return (
+                  <div key={index} className="flex space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        {getStepIcon(update.step || "")}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs",
+                                getStepColor(update.step || "")
+                              )}
+                            >
+                              {update.step?.replace(/_/g, " ").toUpperCase()}
+                            </Badge>
+                            {update.filename && (
+                              <span className="text-sm font-medium text-blue-800">
+                                {update.filename}
+                              </span>
+                            )}
+                          </div>
+                          {update.extraction_time && (
+                            <span className="text-xs text-blue-600">
+                              {update.extraction_time}
+                            </span>
+                          )}
+                        </div>
+                        {update.message && (
+                          <p className="text-sm text-blue-700 mt-1">
+                            {update.message}
+                          </p>
+                        )}
+                        {update.content_length && (
+                          <p className="text-xs text-blue-600 mt-1">
+                            Content length: {update.content_length}
+                          </p>
+                        )}
+                        {update.pages && (
+                          <p className="text-xs text-blue-600 mt-1">
+                            Pages: {update.pages}
+                          </p>
+                        )}
+                        {update.encoding && (
+                          <p className="text-xs text-blue-600 mt-1">
+                            Encoding: {update.encoding}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle vision processing updates
+              if (update.type === "vision_processing") {
+                const getStatusIcon = (status: string) => {
+                  switch (status) {
+                    case "started":
+                      return <Activity className="h-4 w-4" />;
+                    case "completed":
+                      return <CheckCircle className="h-4 w-4" />;
+                    case "error":
+                      return <AlertTriangle className="h-4 w-4" />;
+                    default:
+                      return <Eye className="h-4 w-4" />;
+                  }
+                };
+
+                const getStatusColor = (status: string) => {
+                  switch (status) {
+                    case "started":
+                      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                    case "completed":
+                      return "bg-green-100 text-green-800 border-green-200";
+                    case "error":
+                      return "bg-red-100 text-red-800 border-red-200";
+                    default:
+                      return "bg-gray-100 text-gray-800 border-gray-200";
+                  }
+                };
+
+                return (
+                  <div key={index} className="flex space-x-3 ml-8">
+                    <div className="flex-shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
+                        {getStatusIcon(update.status || "")}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs",
+                                getStatusColor(update.status || "")
+                              )}
+                            >
+                              {update.status?.toUpperCase()}
+                            </Badge>
+                            {update.page && update.total_pages && (
+                              <span className="text-sm font-medium text-purple-800">
+                                Page {update.page}/{update.total_pages}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {update.filename && (
+                          <p className="text-xs text-purple-700 mt-1">
+                            {update.filename}
+                          </p>
+                        )}
+                        {update.content_length && (
+                          <p className="text-xs text-purple-600 mt-1">
+                            Extracted: {update.content_length}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle file started/completed updates
+              if (
+                update.type === "file_started" ||
+                update.type === "file_completed"
+              ) {
+                const isCompleted = update.type === "file_completed";
+                const icon = isCompleted ? (
+                  <CheckCircle className="h-4 w-4" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                );
+                const bgColor = isCompleted ? "bg-green-100" : "bg-blue-100";
+                const textColor = isCompleted
+                  ? "text-green-800"
+                  : "text-blue-800";
+                const borderColor = isCompleted
+                  ? "border-green-200"
+                  : "border-blue-200";
+
+                return (
+                  <div key={index} className="flex space-x-3">
+                    <div className="flex-shrink-0">
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center",
+                          bgColor
+                        )}
+                      >
+                        {icon}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div
+                        className={cn(
+                          "border rounded-lg p-3",
+                          borderColor,
+                          isCompleted ? "bg-green-50" : "bg-blue-50"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Badge
+                              variant="outline"
+                              className={cn("text-xs", textColor, borderColor)}
+                            >
+                              {isCompleted ? "COMPLETED" : "STARTED"}
+                            </Badge>
+                            <span className="text-sm font-medium text-gray-800">
+                              {update.filename}
+                            </span>
+                          </div>
+                          {update.file_number && update.total_files && (
+                            <span className="text-xs text-gray-500">
+                              {update.file_number}/{update.total_files}
+                            </span>
+                          )}
+                        </div>
+                        {update.document_type && (
+                          <p className="text-xs text-gray-600 mt-1">
+                            Type: {update.document_type}
+                          </p>
+                        )}
+                        {update.message && (
+                          <p className="text-sm text-gray-700 mt-1">
+                            {update.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Handle preprocessing completed
+              if (update.type === "preprocessing_completed") {
+                return (
+                  <div key={index} className="flex space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center space-x-2">
+                          <Badge
+                            variant="outline"
+                            className="text-xs bg-green-100 text-green-800 border-green-200"
+                          >
+                            PREPROCESSING COMPLETE
+                          </Badge>
+                          {update.duration_ms && (
+                            <span className="text-xs text-green-600">
+                              {(update.duration_ms / 1000).toFixed(1)}s
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-green-700 mt-1">
+                          {update.message}
+                        </p>
+                        {update.count && (
+                          <p className="text-xs text-green-600 mt-1">
+                            {update.count} files processed
                           </p>
                         )}
                       </div>

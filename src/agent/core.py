@@ -3,6 +3,7 @@
 import uuid
 import asyncio
 import json
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 # Remove unused langchain agents imports - we use custom ReAct implementation
@@ -15,6 +16,9 @@ from ..models.documents import DocumentBundle
 from ..models.fraud import FraudAnalysisResult, AgentExecution, FraudIndicator, FraudType
 from ..config import settings
 from ..utils.exceptions import AgentExecutionError
+from ..utils.logging_config import (
+    log_step, log_performance, log_error, log_llm, log_agent, LLMLoggingWrapper
+)
 
 
 class FraudDetectionAgent:
@@ -26,6 +30,9 @@ class FraudDetectionAgent:
             temperature=settings.openai_temperature,
             api_key=settings.openai_api_key
         )
+        
+        # Wrap LLM with logging
+        self.llm = LLMLoggingWrapper(self.llm, settings.openai_model)
 
         # Get all fraud detection tools
         self.tools = get_all_tools()
@@ -33,48 +40,103 @@ class FraudDetectionAgent:
 
         # Create agent prompt template
         self.prompt_template = get_agent_prompt_template()
+        
+        log_step("complete", message="FraudDetectionAgent initialized", 
+                model=settings.openai_model, tools_count=len(self.tools))
 
     def analyze_documents(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None) -> AgentExecution:
         """Analyze a document bundle for fraud using ReAct strategy."""
 
         execution_id = str(uuid.uuid4())
         options = options or {}
+        
+        log_step("start", message="Starting ReAct fraud analysis", 
+                execution_id=execution_id, bundle_id=bundle.bundle_id)
 
         # Initialize memory and tracking
         memory = FraudDetectionMemory(execution_id, bundle.bundle_id)
 
         try:
             # Phase 1: Initial Observation
+            phase_start = time.time()
+            log_step("start", message="Phase 1: Initial Observation", 
+                    execution_id=execution_id, phase="initial_observation")
+            
             memory.set_phase("initial_observation")
             initial_observation = self._conduct_initial_observation(bundle)
             memory.add_observation(initial_observation)
+            
+            phase_time = time.time() - phase_start
+            log_performance("phase_initial_observation", phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 1: Initial Observation completed", 
+                    execution_id=execution_id, observation_length=len(initial_observation))
 
             # Phase 2: Document Extraction
+            phase_start = time.time()
+            log_step("start", message="Phase 2: Document Extraction", 
+                    execution_id=execution_id, phase="document_extraction")
+            
             memory.set_phase("document_extraction")
             extracted_data = self._extract_document_data(bundle, memory)
             memory.update_context("extracted_data", extracted_data)
+            
+            phase_time = time.time() - phase_start
+            log_performance("phase_document_extraction", phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 2: Document Extraction completed", 
+                    execution_id=execution_id, extracted_fields=len(extracted_data))
 
             # Phase 3: Systematic Validation
+            phase_start = time.time()
+            log_step("start", message="Phase 3: Systematic Validation", 
+                    execution_id=execution_id, phase="systematic_validation")
+            
             memory.set_phase("systematic_validation")
             validation_results = self._conduct_systematic_validation(
                 bundle, memory, extracted_data)
+            
+            phase_time = time.time() - phase_start
+            log_performance("phase_systematic_validation", phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 3: Systematic Validation completed", 
+                    execution_id=execution_id, validation_results=len(validation_results))
 
             # Phase 4: Advanced Pattern Detection
+            phase_start = time.time()
+            log_step("start", message="Phase 4: Pattern Detection", 
+                    execution_id=execution_id, phase="pattern_detection")
+            
             memory.set_phase("pattern_detection")
             pattern_results = self._conduct_pattern_detection(
                 bundle, memory, extracted_data, validation_results)
+            
+            phase_time = time.time() - phase_start
+            log_performance("phase_pattern_detection", phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 4: Pattern Detection completed", 
+                    execution_id=execution_id, pattern_results=len(pattern_results))
 
             # Phase 5: Evidence Synthesis
+            phase_start = time.time()
+            log_step("start", message="Phase 5: Evidence Synthesis", 
+                    execution_id=execution_id, phase="evidence_synthesis")
+            
             memory.set_phase("evidence_synthesis")
             fraud_analysis = self._synthesize_evidence(
                 bundle, memory, extracted_data, validation_results + pattern_results)
+            
+            phase_time = time.time() - phase_start
+            log_performance("phase_evidence_synthesis", phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 5: Evidence Synthesis completed", 
+                    execution_id=execution_id, confidence=fraud_analysis.overall_confidence if fraud_analysis else 0)
 
             # Complete the execution
             memory.agent_execution.complete_execution(fraud_analysis)
+            
+            log_step("complete", message="ReAct fraud analysis completed successfully", 
+                    execution_id=execution_id, bundle_id=bundle.bundle_id)
 
             return memory.get_agent_execution()
 
         except Exception as e:
+            log_error("agent_execution_error", str(e), execution_id=execution_id, bundle_id=bundle.bundle_id)
             memory.agent_execution.fail_execution(str(e))
             return memory.get_agent_execution()
 

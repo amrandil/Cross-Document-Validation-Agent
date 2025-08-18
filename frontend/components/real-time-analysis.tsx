@@ -47,6 +47,7 @@ import {
   AlertCircle,
   CheckSquare,
   Square,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +90,8 @@ interface StreamUpdate {
   file_size?: string;
   pages?: number;
   count?: number;
+  // Extracted content fields
+  extracted_content?: string;
 }
 
 interface RealTimeAnalysisProps {
@@ -179,6 +182,10 @@ export default function RealTimeAnalysis({
   const [duration, setDuration] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // State tracking for loading animations
+  const [preprocessingCompleted, setPreprocessingCompleted] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   const streamRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -324,6 +331,7 @@ export default function RealTimeAnalysis({
               if (data.trim() === "") continue;
               try {
                 const update: StreamUpdate = JSON.parse(data);
+                // Process update immediately
                 handleStreamUpdate(update);
               } catch (e) {
                 console.error("Error parsing stream update:", e, line);
@@ -349,7 +357,43 @@ export default function RealTimeAnalysis({
   const handleStreamUpdate = (update: StreamUpdate) => {
     console.log("Received stream update:", update);
 
+    // Add timestamp if not present
+    if (!update.timestamp) {
+      update.timestamp = new Date().toISOString();
+    }
+
+    // Special logging for extracted content updates
+    if (update.type === "extracted_content") {
+      console.log("🔍 EXTRACTED CONTENT UPDATE:", {
+        filename: update.filename,
+        content_length: update.content_length,
+        document_type: update.document_type,
+        has_content: !!update.content,
+        has_extracted_content: !!update.extracted_content,
+        content_preview: update.content
+          ? update.content.substring(0, 100) + "..."
+          : "No content",
+      });
+    }
+
     setStreamUpdates((prev) => [...prev, update]);
+
+    // Track completion states for loading animations
+    if (update.type === "preprocessing_completed") {
+      setPreprocessingCompleted(true);
+    }
+
+    if (update.type === "preprocessing_step" && update.step) {
+      const completedStepsList = [
+        "pdf_uploaded",
+        "content_extracted",
+        "completed",
+        "file_decoded",
+      ];
+      if (completedStepsList.includes(update.step)) {
+        setCompletedSteps((prev) => new Set([...prev, update.step!]));
+      }
+    }
 
     switch (update.type) {
       case "analysis_started":
@@ -376,6 +420,10 @@ export default function RealTimeAnalysis({
         if (update.tool_number && update.total_tools) {
           setToolProgress((update.tool_number / update.total_tools) * 100);
         }
+        break;
+
+      case "extracted_content":
+        // Handle extracted content updates - no special handling needed, will be displayed in the map
         break;
 
       case "analysis_completed":
@@ -418,6 +466,8 @@ export default function RealTimeAnalysis({
     setError(null);
     setStartTime(null);
     setDuration(0);
+    setPreprocessingCompleted(false);
+    setCompletedSteps(new Set());
   };
 
   const getStepTypeColor = (stepType: string) => {
@@ -458,6 +508,25 @@ export default function RealTimeAnalysis({
       <div className="flex-1 min-h-0">
         <div ref={streamRef} className="h-full w-full overflow-y-auto">
           <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+            {/* Debug Controls */}
+            <div className="flex justify-end space-x-2 mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDebug(!showDebug)}
+                className="text-xs"
+              >
+                {showDebug ? "Hide Debug" : "Show Debug"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAutoScroll(!autoScroll)}
+                className="text-xs"
+              >
+                {autoScroll ? "Disable Auto-scroll" : "Enable Auto-scroll"}
+              </Button>
+            </div>
             {streamUpdates.length === 0 && !isStreaming && (
               <div className="text-center py-16 text-gray-500">
                 <Bot className="h-16 w-16 mx-auto mb-6 text-gray-300" />
@@ -473,10 +542,320 @@ export default function RealTimeAnalysis({
 
             {streamUpdates.length === 0 && isStreaming && (
               <div className="text-center py-16 text-gray-500">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-gray-400 mx-auto mb-4"></div>
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-base text-gray-600">
                   Initializing agent and connecting to analysis stream...
                 </p>
+              </div>
+            )}
+
+            {/* Unified chronological message display */}
+            {streamUpdates.length > 0 && (
+              <div className="space-y-4">
+                {streamUpdates.map((update, index) => {
+                  // Handle connection message
+                  if (update.type === "connection") {
+                    return (
+                      <div
+                        key={`connection-${index}`}
+                        className="flex space-x-3"
+                      >
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm font-medium text-green-800">
+                                {update.message}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle preprocessing started message
+                  if (update.type === "preprocessing_started") {
+                    return (
+                      <div
+                        key={`preprocessing-started-${index}`}
+                        className="flex space-x-3"
+                      >
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            {preprocessingCompleted ? (
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div
+                            className={cn(
+                              "border rounded-lg p-3",
+                              preprocessingCompleted
+                                ? "bg-green-50 border-green-200"
+                                : "bg-blue-50 border-blue-200"
+                            )}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <span
+                                className={cn(
+                                  "text-sm font-medium",
+                                  preprocessingCompleted
+                                    ? "text-green-800"
+                                    : "text-blue-800"
+                                )}
+                              >
+                                {update.message}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle preprocessing steps
+                  if (update.type === "preprocessing_step") {
+                    const isActiveStep = [
+                      "uploading_pdf",
+                      "extracting_content",
+                      "generating_summary",
+                    ].includes(update.step || "");
+
+                    const isCompletedStep = [
+                      "pdf_uploaded",
+                      "content_extracted",
+                      "completed",
+                      "file_decoded",
+                    ].includes(update.step || "");
+
+                    const isErrorStep = update.step === "error";
+
+                    // Check if this specific step is completed
+                    const isStepCompleted = completedSteps.has(
+                      update.step || ""
+                    );
+
+                    return (
+                      <div key={`step-${index}`} className="flex space-x-3">
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            {isActiveStep && !isStepCompleted ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            ) : isCompletedStep || isStepCompleted ? (
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            ) : isErrorStep ? (
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4 text-blue-600" />
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div
+                            className={cn(
+                              "border rounded-lg p-3",
+                              isCompletedStep || isStepCompleted
+                                ? "bg-green-50 border-green-200"
+                                : isErrorStep
+                                ? "bg-red-50 border-red-200"
+                                : "bg-blue-50 border-blue-200"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span
+                                  className={cn(
+                                    "text-sm font-medium",
+                                    isCompletedStep || isStepCompleted
+                                      ? "text-green-800"
+                                      : isErrorStep
+                                      ? "text-red-800"
+                                      : "text-blue-800"
+                                  )}
+                                >
+                                  {update.message ||
+                                    update.step?.replace(/_/g, " ")}
+                                </span>
+                                {update.filename && (
+                                  <span
+                                    className={cn(
+                                      "text-sm",
+                                      isCompletedStep || isStepCompleted
+                                        ? "text-green-600"
+                                        : isErrorStep
+                                        ? "text-red-600"
+                                        : "text-blue-600"
+                                    )}
+                                  >
+                                    ({update.filename})
+                                  </span>
+                                )}
+                              </div>
+                              {update.content_length && (
+                                <span
+                                  className={cn(
+                                    "text-xs",
+                                    isCompletedStep || isStepCompleted
+                                      ? "text-green-500"
+                                      : isErrorStep
+                                      ? "text-red-500"
+                                      : "text-blue-500"
+                                  )}
+                                >
+                                  {update.content_length}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle file started/completed
+                  if (
+                    update.type === "file_started" ||
+                    update.type === "file_completed"
+                  ) {
+                    const isCompleted = update.type === "file_completed";
+
+                    return (
+                      <div key={`file-${index}`} className="flex space-x-3">
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                            {isCompleted ? (
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div
+                            className={cn(
+                              "border rounded-lg p-3",
+                              isCompleted
+                                ? "bg-green-50 border-green-200"
+                                : "bg-yellow-50 border-yellow-200"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-sm font-medium text-gray-800">
+                                  {update.filename}
+                                </span>
+                                {update.file_number && update.total_files && (
+                                  <span className="text-xs text-gray-500">
+                                    ({update.file_number}/{update.total_files})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {isCompleted ? "Completed" : "Processing..."}
+                              </span>
+                            </div>
+                            {update.message && (
+                              <p className="text-xs text-gray-600 mt-1">
+                                {update.message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle extracted content
+                  if (update.type === "extracted_content") {
+                    return (
+                      <div
+                        key={`extracted-${index}`}
+                        className="flex space-x-3"
+                      >
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div className="flex items-center space-x-3 mb-3">
+                              <h3 className="text-lg font-medium text-green-800">
+                                Content Extracted: {update.filename}
+                              </h3>
+                            </div>
+                            <div className="text-sm text-green-600 mb-3">
+                              <div className="flex items-center space-x-4">
+                                <span>
+                                  Document Type: {update.document_type}
+                                </span>
+                                <span>
+                                  Content Length: {update.content_length}
+                                </span>
+                              </div>
+                            </div>
+                            <details className="group">
+                              <summary className="cursor-pointer text-sm font-medium text-green-700 hover:text-green-800 flex items-center space-x-2">
+                                <ChevronRight className="h-4 w-4 group-open:rotate-90 transition-transform" />
+                                <span>View Extracted Content</span>
+                              </summary>
+                              <div className="mt-3 p-3 bg-white border border-green-200 rounded text-xs font-mono text-gray-700 max-h-96 overflow-y-auto">
+                                <pre className="whitespace-pre-wrap">
+                                  {update.content}
+                                </pre>
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle preprocessing completed
+                  if (update.type === "preprocessing_completed") {
+                    return (
+                      <div
+                        key={`preprocessing-complete-${index}`}
+                        className="flex space-x-3"
+                      >
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-blue-600" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h3 className="text-lg font-medium text-blue-800">
+                                Preprocessing Complete
+                              </h3>
+                            </div>
+                            <div className="text-sm text-blue-600">
+                              {update.message}
+                            </div>
+                            {update.duration_ms && (
+                              <div className="text-xs text-blue-500 mt-1">
+                                Processing time:{" "}
+                                {(update.duration_ms / 1000).toFixed(1)}s
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Handle other update types (analysis steps, etc.)
+                  return null;
+                })}
               </div>
             )}
 
@@ -606,178 +985,14 @@ export default function RealTimeAnalysis({
 
               // Handle preprocessing steps
               if (update.type === "preprocessing_step") {
-                const getStepIcon = (step: string) => {
-                  switch (step) {
-                    case "start":
-                      return <FileText className="h-4 w-4" />;
-                    case "converting_pdf":
-                      return <Settings className="h-4 w-4" />;
-                    case "pdf_converted":
-                      return <CheckCircle className="h-4 w-4" />;
-                    case "combining_content":
-                      return <Database className="h-4 w-4" />;
-                    case "generating_summary":
-                      return <Brain className="h-4 w-4" />;
-                    case "completed":
-                      return <CheckCircle className="h-4 w-4" />;
-                    case "error":
-                      return <AlertTriangle className="h-4 w-4" />;
-                    case "processing_text_file":
-                      return <FileText className="h-4 w-4" />;
-                    case "file_decoded":
-                      return <CheckCircle className="h-4 w-4" />;
-                    default:
-                      return <Activity className="h-4 w-4" />;
-                  }
-                };
-
-                const getStepColor = (step: string) => {
-                  switch (step) {
-                    case "start":
-                      return "bg-blue-100 text-blue-800 border-blue-200";
-                    case "converting_pdf":
-                    case "combining_content":
-                    case "generating_summary":
-                    case "processing_text_file":
-                      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-                    case "pdf_converted":
-                    case "completed":
-                    case "file_decoded":
-                      return "bg-green-100 text-green-800 border-green-200";
-                    case "error":
-                      return "bg-red-100 text-red-800 border-red-200";
-                    default:
-                      return "bg-gray-100 text-gray-800 border-gray-200";
-                  }
-                };
-
-                return (
-                  <div key={index} className="flex space-x-3">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        {getStepIcon(update.step || "")}
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs",
-                                getStepColor(update.step || "")
-                              )}
-                            >
-                              {update.step?.replace(/_/g, " ").toUpperCase()}
-                            </Badge>
-                            {update.filename && (
-                              <span className="text-sm font-medium text-blue-800">
-                                {update.filename}
-                              </span>
-                            )}
-                          </div>
-                          {update.extraction_time && (
-                            <span className="text-xs text-blue-600">
-                              {update.extraction_time}
-                            </span>
-                          )}
-                        </div>
-                        {update.message && (
-                          <p className="text-sm text-blue-700 mt-1">
-                            {update.message}
-                          </p>
-                        )}
-                        {update.content_length && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            Content length: {update.content_length}
-                          </p>
-                        )}
-                        {update.pages && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            Pages: {update.pages}
-                          </p>
-                        )}
-                        {update.encoding && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            Encoding: {update.encoding}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
+                // Skip old preprocessing step handling - now handled by the new components above
+                return null;
               }
 
               // Handle vision processing updates
               if (update.type === "vision_processing") {
-                const getStatusIcon = (status: string) => {
-                  switch (status) {
-                    case "started":
-                      return <Activity className="h-4 w-4" />;
-                    case "completed":
-                      return <CheckCircle className="h-4 w-4" />;
-                    case "error":
-                      return <AlertTriangle className="h-4 w-4" />;
-                    default:
-                      return <Eye className="h-4 w-4" />;
-                  }
-                };
-
-                const getStatusColor = (status: string) => {
-                  switch (status) {
-                    case "started":
-                      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-                    case "completed":
-                      return "bg-green-100 text-green-800 border-green-200";
-                    case "error":
-                      return "bg-red-100 text-red-800 border-red-200";
-                    default:
-                      return "bg-gray-100 text-gray-800 border-gray-200";
-                  }
-                };
-
-                return (
-                  <div key={index} className="flex space-x-3 ml-8">
-                    <div className="flex-shrink-0">
-                      <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
-                        {getStatusIcon(update.status || "")}
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-xs",
-                                getStatusColor(update.status || "")
-                              )}
-                            >
-                              {update.status?.toUpperCase()}
-                            </Badge>
-                            {update.page && update.total_pages && (
-                              <span className="text-sm font-medium text-purple-800">
-                                Page {update.page}/{update.total_pages}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {update.filename && (
-                          <p className="text-xs text-purple-700 mt-1">
-                            {update.filename}
-                          </p>
-                        )}
-                        {update.content_length && (
-                          <p className="text-xs text-purple-600 mt-1">
-                            Extracted: {update.content_length}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
+                // Skip old vision processing handling - now handled by the new components above
+                return null;
               }
 
               // Handle file started/completed updates
@@ -785,110 +1000,14 @@ export default function RealTimeAnalysis({
                 update.type === "file_started" ||
                 update.type === "file_completed"
               ) {
-                const isCompleted = update.type === "file_completed";
-                const icon = isCompleted ? (
-                  <CheckCircle className="h-4 w-4" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                );
-                const bgColor = isCompleted ? "bg-green-100" : "bg-blue-100";
-                const textColor = isCompleted
-                  ? "text-green-800"
-                  : "text-blue-800";
-                const borderColor = isCompleted
-                  ? "border-green-200"
-                  : "border-blue-200";
-
-                return (
-                  <div key={index} className="flex space-x-3">
-                    <div className="flex-shrink-0">
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center",
-                          bgColor
-                        )}
-                      >
-                        {icon}
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <div
-                        className={cn(
-                          "border rounded-lg p-3",
-                          borderColor,
-                          isCompleted ? "bg-green-50" : "bg-blue-50"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-xs", textColor, borderColor)}
-                            >
-                              {isCompleted ? "COMPLETED" : "STARTED"}
-                            </Badge>
-                            <span className="text-sm font-medium text-gray-800">
-                              {update.filename}
-                            </span>
-                          </div>
-                          {update.file_number && update.total_files && (
-                            <span className="text-xs text-gray-500">
-                              {update.file_number}/{update.total_files}
-                            </span>
-                          )}
-                        </div>
-                        {update.document_type && (
-                          <p className="text-xs text-gray-600 mt-1">
-                            Type: {update.document_type}
-                          </p>
-                        )}
-                        {update.message && (
-                          <p className="text-sm text-gray-700 mt-1">
-                            {update.message}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
+                // Skip old file started/completed handling - now handled by the new components above
+                return null;
               }
 
               // Handle preprocessing completed
               if (update.type === "preprocessing_completed") {
-                return (
-                  <div key={index} className="flex space-x-3">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <div className="flex items-center space-x-2">
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-green-100 text-green-800 border-green-200"
-                          >
-                            PREPROCESSING COMPLETE
-                          </Badge>
-                          {update.duration_ms && (
-                            <span className="text-xs text-green-600">
-                              {(update.duration_ms / 1000).toFixed(1)}s
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-green-700 mt-1">
-                          {update.message}
-                        </p>
-                        {update.count && (
-                          <p className="text-xs text-green-600 mt-1">
-                            {update.count} files processed
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
+                // Skip old preprocessing completed handling - now handled by the new components above
+                return null;
               }
 
               // Handle analysis completion
@@ -963,6 +1082,12 @@ export default function RealTimeAnalysis({
                     </div>
                   </div>
                 );
+              }
+
+              // Handle extracted content display
+              if (update.type === "extracted_content") {
+                // Skip old extracted content handling - now handled by the new components above
+                return null;
               }
 
               // Default case for other update types

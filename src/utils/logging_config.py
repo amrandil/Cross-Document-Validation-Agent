@@ -3,6 +3,7 @@
 import sys
 import os
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, List
 from loguru import logger
@@ -41,10 +42,26 @@ class StreamingLogger:
 
         for callback in self.stream_callbacks:
             try:
-                await callback(update)
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(update)
+                elif hasattr(callback, '__aiter__'):
+                    # Handle async generators
+                    async for _ in callback(update):
+                        pass
+                elif callable(callback):
+                    # Handle regular functions
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(update)
+                    else:
+                        callback(update)
+                else:
+                    # Skip invalid callbacks
+                    logger.warning(
+                        f"Invalid callback type: {type(callback)} | caller=streaming:54")
             except Exception as e:
                 # Log error but don't break other callbacks
-                logger.error(f"Stream callback error: {e}")
+                logger.error(
+                    f"Stream callback error: {e} | caller=streaming:54")
 
 
 # Global streaming logger instance
@@ -60,16 +77,22 @@ class WorkflowLogger:
 
     def _setup_logging(self):
         """Configure loguru with custom formatting and handlers."""
-        # Remove default handler
+        # Remove all existing handlers
         logger.remove()
+
+        # Also remove any handlers that might have been added elsewhere
+        try:
+            logger.remove()
+        except:
+            pass
 
         # Get log level from settings
         log_level = settings.log_level.upper()
 
-        # Console handler with custom format
-        logger.add(
+        # Console handler with simple format
+        console_handler_id = logger.add(
             sys.stdout,
-            format=self._get_console_format(),
+            format="<green>{time:HH:mm:ss}</green> | <level>{level: <5}</level>| <cyan>{name}</cyan> | <level>{message}</level>",
             level=log_level,
             colorize=True,
             backtrace=True,
@@ -80,14 +103,23 @@ class WorkflowLogger:
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
 
-        # Clear the log file on startup
-        log_file = log_dir / "app.log"
-        if log_file.exists():
-            log_file.unlink()  # Delete the existing log file
+        # Create timestamped log file to preserve logs across server restarts
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir / f"app_{timestamp}.log"
 
-        logger.add(
+        # Create symlink to latest log file for easy access
+        latest_log_link = log_dir / "app.log"
+        if latest_log_link.exists():
+            latest_log_link.unlink()  # Remove existing symlink
+        try:
+            latest_log_link.symlink_to(log_file.name)
+        except OSError:
+            # On Windows or if symlink fails, just copy the filename
+            pass
+
+        file_handler_id = logger.add(
             log_file,
-            format=self._get_file_format(),
+            format="{time:HH:mm:ss.SSS} | {level: <5} | {name} | {message}",
             level="DEBUG",
             rotation="10 MB",
             retention="7 days",
@@ -98,22 +130,11 @@ class WorkflowLogger:
 
     def _get_console_format(self) -> str:
         """Get console log format with emojis and structured data."""
-        return (
-            "<green>{time:HH:mm:ss}</green> | "
-            "<level>{level: <5}</level>| "
-            "<cyan>{extra[caller_short]}</cyan> | "
-            "<level>{message}</level>"
-        )
+        return "<green>{time:HH:mm:ss}</green> | <level>{level: <5}</level>| <cyan>{name}</cyan> | <level>{message}</level>"
 
     def _get_file_format(self) -> str:
         """Get file log format with more detailed information."""
-        return (
-            "{time:HH:mm:ss.SSS} | "
-            "{level: <5} | "
-            "{extra[caller_short]} | "
-            "{message} | "
-            "extra={extra}"
-        )
+        return "{time:HH:mm:ss.SSS} | {level: <5} | {name} | {message}"
 
     def log_workflow_step(self, step: str, **kwargs):
         """Log a workflow step with structured data."""
@@ -168,9 +189,10 @@ class WorkflowLogger:
             if data_parts:
                 message += f" | {' | '.join(data_parts)}"
 
-        # Add caller information to extra data
-        extra_data = {"caller": caller_location, "caller_short": caller_short}
-        self.logger.bind(**extra_data).info(message)
+        # Add caller information to the message instead of extra data
+        message = f"{message} | caller={caller_short}"
+
+        self.logger.info(message)
 
     async def log_workflow_step_stream(self, step: str, **kwargs):
         """Log a workflow step and stream it to UI."""

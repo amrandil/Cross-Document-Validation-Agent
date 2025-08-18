@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model: str = Field(
-        default="gpt-4o", description="OpenAI model to use")
+        default="gpt-4o", description="OpenAI model to use for direct PDF processing")
     openai_temperature: float = Field(
-        default=0.2, description="LLM temperature for consistency")
+        default=0.1, description="LLM temperature for consistency in PDF extraction")
 
     # Application Configuration
     app_name: str = Field(default="Multi-Document Fraud Detection Agent")

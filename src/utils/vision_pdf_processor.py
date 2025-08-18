@@ -1,13 +1,11 @@
-"""Vision-based PDF processing utilities using LLM for comprehensive document extraction."""
+"""Direct PDF processing utilities using OpenAI's vision models for comprehensive document extraction."""
 
 import io
 import base64
 import asyncio
 from typing import List, Optional, Dict, Any
-from PIL import Image
-import pdf2image
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
+from openai import OpenAI
+from dotenv import load_dotenv
 
 from ..models.documents import DocumentType
 from ..config import settings
@@ -15,7 +13,7 @@ from .logging_config import log_step, log_performance, log_error, log_llm, log_v
 
 
 class VisionPDFProcessor:
-    """Utility class for extracting comprehensive content from PDF files using vision-enabled LLMs."""
+    """Utility class for extracting comprehensive content from PDF files using OpenAI's direct PDF processing."""
 
     _instance = None
     _initialized = False
@@ -29,24 +27,15 @@ class VisionPDFProcessor:
         if VisionPDFProcessor._initialized:
             return
 
-        # Use the same model from settings as default for all tasks
-        self.vision_model_name = settings.openai_model
-        self.summary_model_name = settings.openai_model
+        # Load environment variables
+        load_dotenv()
 
-        # Vision LLM for comprehensive document analysis
-        self.vision_llm = ChatOpenAI(
-            model=self.vision_model_name,
-            temperature=0.1,  # Low temperature for consistent extraction
-            max_tokens=4096,  # Allow for comprehensive extraction
-            api_key=settings.openai_api_key
-        )
+        # Use GPT-4o as default model for all tasks
+        self.vision_model_name = "gpt-4o"
+        self.summary_model_name = "gpt-4o"
 
-        # Summary LLM for document summarization
-        self.summary_llm = ChatOpenAI(
-            model=self.summary_model_name,
-            temperature=0.1,  # Low temperature for consistent summaries
-            api_key=settings.openai_api_key
-        )
+        # Initialize OpenAI client
+        self.client = OpenAI()
 
         VisionPDFProcessor._initialized = True
 
@@ -64,126 +53,151 @@ class VisionPDFProcessor:
         document_type: DocumentType
     ) -> str:
         """
-        Extract comprehensive content from PDF using vision-enabled LLM with streaming updates.
+        Extract comprehensive content from PDF using OpenAI's direct PDF processing with streaming updates.
         """
         import time
         start_time = time.time()
 
-        log_step("start", message="PDF vision extraction started",
+        log_step("start", message="PDF direct extraction started",
                  filename=filename, doc_type=document_type, file_size=f"{len(pdf_bytes):,} bytes")
 
         # Stream preprocessing start
         await log_preprocessing_step("start", filename=filename,
                                      doc_type=document_type.value,
-                                     file_size=f"{len(pdf_bytes):,} bytes")
+                                     file_size=f"{len(pdf_bytes):,} bytes",
+                                     message="Starting direct PDF processing with OpenAI")
+
+        # Small delay to ensure the update is sent
+        await asyncio.sleep(0.1)
 
         try:
-            # Convert PDF to images
-            log_step("preprocess", message="Converting PDF to images",
+            # Process PDF directly using file upload method
+            log_step("preprocess", message="Processing PDF directly with OpenAI",
                      filename=filename)
-            await log_preprocessing_step("converting_pdf", filename=filename)
+            await log_preprocessing_step("uploading_pdf", filename=filename,
+                                         message="Uploading PDF file to OpenAI servers")
 
-            images = self._pdf_to_images(pdf_bytes)
+            # Small delay to ensure the update is sent
+            await asyncio.sleep(0.1)
 
-            if not images:
-                log_error("pdf_conversion_error",
-                          f"No images generated for {filename}", filename=filename)
+            # Upload PDF file
+            file = self.client.files.create(
+                file=(filename, io.BytesIO(pdf_bytes).read(), "application/pdf"),
+                purpose="assistants"
+            )
+
+            log_step("preprocess", message="PDF file uploaded successfully",
+                     filename=filename, file_id=file.id)
+            await log_preprocessing_step("pdf_uploaded", filename=filename,
+                                         file_id=file.id,
+                                         message="PDF file uploaded successfully")
+
+            # Small delay to ensure the update is sent
+            await asyncio.sleep(0.1)
+
+            # Get document-specific extraction prompt
+            prompt = self._get_extraction_prompt(document_type, filename)
+
+            await log_preprocessing_step("extracting_content", filename=filename,
+                                         message=f"Extracting content using {self.vision_model_name}")
+
+            # Small delay to ensure the update is sent
+            await asyncio.sleep(0.1)
+
+            # Create chat completion with uploaded file
+            response = self.client.chat.completions.create(
+                model=self.vision_model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "file",
+                                "file": {
+                                    "file_id": file.id,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ]
+                    }
+                ],
+                max_tokens=4096,
+                temperature=0.1
+            )
+
+            extracted_content = response.choices[0].message.content
+
+            if not extracted_content:
+                log_error("extraction_failed",
+                          f"No content extracted from {filename}", filename=filename)
                 await log_preprocessing_step("error", filename=filename,
-                                             error="No images generated from PDF")
-                return f"[VISION EXTRACTION FAILED - NO IMAGES GENERATED FOR {filename}]"
+                                             error="No content extracted from PDF",
+                                             message="PDF extraction failed - no content found")
+                return f"[PDF EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
 
-            log_step("preprocess", message="PDF converted to images",
-                     filename=filename, pages=len(images))
-            await log_preprocessing_step("pdf_converted", filename=filename, pages=len(images))
+            log_step("preprocess", message="PDF content extracted successfully",
+                     filename=filename, content_length=f"{len(extracted_content):,} chars")
+            await log_preprocessing_step("content_extracted", filename=filename,
+                                         content_length=f"{len(extracted_content):,} chars",
+                                         message="PDF content extracted successfully")
 
-            # Process all pages with vision LLM
-            all_content = []
-
-            for page_num, image in enumerate(images, 1):
-                log_step("preprocess", message=f"Processing page {page_num}/{len(images)}",
-                         filename=filename, page=page_num, total_pages=len(images))
-
-                # Stream page processing start
-                await log_vision_processing(filename=filename, page=page_num,
-                                            total_pages=len(images), status="started")
-
-                page_content = await self._extract_page_content_async(
-                    image,
-                    page_num,
-                    len(images),
-                    document_type,
-                    filename
-                )
-
-                if page_content:
-                    all_content.append(
-                        f"=== PAGE {page_num} ===\n{page_content}")
-                    log_step("complete", message=f"Page {page_num} content extracted",
-                             filename=filename, page=page_num, content_length=f"{len(page_content):,} chars")
-
-                    # Stream page completion
-                    await log_vision_processing(filename=filename, page=page_num,
-                                                total_pages=len(images), status="completed",
-                                                content_length=f"{len(page_content):,} chars")
-                else:
-                    log_error("page_extraction_error", f"No content extracted from page {page_num}",
-                              filename=filename, page=page_num)
-
-                    # Stream page error
-                    await log_vision_processing(filename=filename, page=page_num,
-                                                total_pages=len(images), status="error")
-
-            if not all_content:
-                log_error(
-                    "extraction_failed", f"No content extracted from {filename}", filename=filename)
-                await log_preprocessing_step("error", filename=filename,
-                                             error="No content extracted from any page")
-                return f"[VISION EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
-
-            # Combine all pages and add document summary
-            log_step("preprocess", message="Combining page content",
-                     filename=filename)
-            await log_preprocessing_step("combining_content", filename=filename)
-
-            combined_content = "\n\n".join(all_content)
+            # Small delay to ensure the update is sent
+            await asyncio.sleep(0.1)
 
             # Generate document summary and structure
             log_step("preprocess",
                      message="Generating document summary", filename=filename)
-            await log_preprocessing_step("generating_summary", filename=filename)
+            await log_preprocessing_step("generating_summary", filename=filename,
+                                         message="Generating comprehensive document summary")
+
+            # Small delay to ensure the update is sent
+            await asyncio.sleep(0.1)
 
             final_content = await self._generate_document_summary_async(
-                combined_content,
+                extracted_content,
                 document_type,
-                filename,
-                len(images)
+                filename
             )
 
             extraction_time = time.time() - start_time
-            log_performance("pdf_vision_extraction", extraction_time,
-                            filename=filename, pages=len(images))
+            log_performance("pdf_direct_extraction", extraction_time,
+                            filename=filename)
 
-            log_step("complete", message="PDF vision extraction completed",
+            log_step("complete", message="PDF direct extraction completed",
                      filename=filename, final_length=f"{len(final_content):,} chars",
                      extraction_time=f"{extraction_time:.2f}s")
 
             # Stream completion
             await log_preprocessing_step("completed", filename=filename,
                                          final_length=f"{len(final_content):,} chars",
-                                         extraction_time=f"{extraction_time:.2f}s")
+                                         extraction_time=f"{extraction_time:.2f}s",
+                                         message="PDF processing completed successfully")
+
+            # Clean up uploaded file
+            try:
+                self.client.files.delete(file.id)
+                log_step("cleanup", message="Uploaded file deleted",
+                         filename=filename, file_id=file.id)
+            except Exception as e:
+                log_error("file_cleanup_error", f"Failed to delete uploaded file {file.id}",
+                          filename=filename, error=str(e))
 
             return final_content
 
         except Exception as e:
             extraction_time = time.time() - start_time
-            log_error("vision_extraction_error", f"Vision extraction failed for {filename}",
+            log_error("direct_extraction_error", f"Direct PDF extraction failed for {filename}",
                       filename=filename, error=str(e), extraction_time=f"{extraction_time:.2f}s")
 
             # Stream error
             await log_preprocessing_step("error", filename=filename,
-                                         error=str(e), extraction_time=f"{extraction_time:.2f}s")
+                                         error=str(e), extraction_time=f"{extraction_time:.2f}s",
+                                         message=f"PDF processing failed: {str(e)}")
 
-            return f"[VISION EXTRACTION ERROR FOR {filename}: {str(e)}]"
+            return f"[PDF DIRECT EXTRACTION ERROR FOR {filename}: {str(e)}]"
 
     def extract_comprehensive_content(
         self,
@@ -225,187 +239,105 @@ class VisionPDFProcessor:
         import time
         start_time = time.time()
 
-        log_step("start", message="PDF vision extraction started",
+        log_step("start", message="PDF direct extraction started (sync)",
                  filename=filename, doc_type=document_type, file_size=f"{len(pdf_bytes):,} bytes")
 
         try:
-            # Convert PDF to images
-            log_step("preprocess", message="Converting PDF to images",
+            # Process PDF directly using file upload method
+            log_step("preprocess", message="Processing PDF directly with OpenAI (sync)",
                      filename=filename)
-            images = self._pdf_to_images(pdf_bytes)
 
-            if not images:
-                log_error("pdf_conversion_error",
-                          f"No images generated for {filename}", filename=filename)
-                return f"[VISION EXTRACTION FAILED - NO IMAGES GENERATED FOR {filename}]"
+            # Upload PDF file
+            file = self.client.files.create(
+                file=(filename, io.BytesIO(pdf_bytes).read(), "application/pdf"),
+                purpose="assistants"
+            )
 
-            log_step("preprocess", message="PDF converted to images",
-                     filename=filename, pages=len(images))
+            log_step("preprocess", message="PDF file uploaded successfully (sync)",
+                     filename=filename, file_id=file.id)
 
-            # Process all pages with vision LLM
-            all_content = []
+            # Get document-specific extraction prompt
+            prompt = self._get_extraction_prompt(document_type, filename)
 
-            for page_num, image in enumerate(images, 1):
-                log_step("preprocess", message=f"Processing page {page_num}/{len(images)}",
-                         filename=filename, page=page_num, total_pages=len(images))
+            # Create chat completion with uploaded file
+            response = self.client.chat.completions.create(
+                model=self.vision_model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "file",
+                                "file": {
+                                    "file_id": file.id,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ]
+                    }
+                ],
+                max_tokens=4096,
+                temperature=0.1
+            )
 
-                page_content = self._extract_page_content(
-                    image,
-                    page_num,
-                    len(images),
-                    document_type,
-                    filename
-                )
+            extracted_content = response.choices[0].message.content
 
-                if page_content:
-                    all_content.append(
-                        f"=== PAGE {page_num} ===\n{page_content}")
-                    log_step("complete", message=f"Page {page_num} content extracted",
-                             filename=filename, page=page_num, content_length=f"{len(page_content):,} chars")
-                else:
-                    log_error("page_extraction_error", f"No content extracted from page {page_num}",
-                              filename=filename, page=page_num)
+            if not extracted_content:
+                log_error("extraction_failed",
+                          f"No content extracted from {filename}", filename=filename)
+                return f"[PDF EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
 
-            if not all_content:
-                log_error(
-                    "extraction_failed", f"No content extracted from {filename}", filename=filename)
-                return f"[VISION EXTRACTION FAILED - NO CONTENT EXTRACTED FROM {filename}]"
-
-            # Combine all pages and add document summary
-            log_step("preprocess", message="Combining page content",
-                     filename=filename)
-            combined_content = "\n\n".join(all_content)
+            log_step("preprocess", message="PDF content extracted successfully (sync)",
+                     filename=filename, content_length=f"{len(extracted_content):,} chars")
 
             # Generate document summary and structure
             log_step("preprocess",
-                     message="Generating document summary", filename=filename)
+                     message="Generating document summary (sync)", filename=filename)
             final_content = self._generate_document_summary(
-                combined_content,
+                extracted_content,
                 document_type,
-                filename,
-                len(images)
+                filename
             )
 
             extraction_time = time.time() - start_time
-            log_performance("pdf_vision_extraction", extraction_time,
-                            filename=filename, pages=len(images))
+            log_performance("pdf_direct_extraction_sync", extraction_time,
+                            filename=filename)
 
-            log_step("complete", message="PDF vision extraction completed",
+            log_step("complete", message="PDF direct extraction completed (sync)",
                      filename=filename, final_length=f"{len(final_content):,} chars",
                      extraction_time=f"{extraction_time:.2f}s")
+
+            # Clean up uploaded file
+            try:
+                self.client.files.delete(file.id)
+                log_step("cleanup", message="Uploaded file deleted (sync)",
+                         filename=filename, file_id=file.id)
+            except Exception as e:
+                log_error("file_cleanup_error", f"Failed to delete uploaded file {file.id}",
+                          filename=filename, error=str(e))
 
             return final_content
 
         except Exception as e:
             extraction_time = time.time() - start_time
-            log_error("vision_extraction_error", f"Vision extraction failed for {filename}",
+            log_error("direct_extraction_error", f"Direct PDF extraction failed for {filename} (sync)",
                       filename=filename, error=str(e), extraction_time=f"{extraction_time:.2f}s")
-            return f"[VISION EXTRACTION ERROR FOR {filename}: {str(e)}]"
-
-    def _pdf_to_images(self, pdf_bytes: bytes) -> List[Image.Image]:
-        """Convert PDF bytes to list of PIL Images."""
-        try:
-            # Convert PDF to images using pdf2image
-            images = pdf2image.convert_from_bytes(
-                pdf_bytes,
-                dpi=200,  # High DPI for better text recognition
-                fmt='PNG',
-                thread_count=2
-            )
-            return images
-        except Exception as e:
-            return []
-
-    def _image_to_base64(self, image: Image.Image) -> str:
-        """Convert PIL Image to base64 string for API."""
-        buffer = io.BytesIO()
-        image.save(buffer, format='PNG')
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        return img_str
-
-    async def _extract_page_content_async(
-        self,
-        image: Image.Image,
-        page_num: int,
-        total_pages: int,
-        document_type: DocumentType,
-        filename: str
-    ) -> str:
-        """Extract content from a single page using vision LLM."""
-        try:
-            # Convert image to base64
-            image_b64 = self._image_to_base64(image)
-
-            # Get document-specific extraction prompt
-            prompt = self._get_extraction_prompt(
-                document_type, page_num, total_pages, filename)
-
-            # Create message with image
-            message = HumanMessage(
-                content=[
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{image_b64}"}
-                    }
-                ]
-            )
-
-            # Get response from vision LLM
-            response = await self.vision_llm.ainvoke([message])
-            return response.content
-
-        except Exception as e:
-            return f"[PAGE {page_num} EXTRACTION FAILED: {str(e)}]"
-
-    def _extract_page_content(
-        self,
-        image: Image.Image,
-        page_num: int,
-        total_pages: int,
-        document_type: DocumentType,
-        filename: str
-    ) -> str:
-        """Extract content from a single page using vision LLM."""
-        try:
-            # Convert image to base64
-            image_b64 = self._image_to_base64(image)
-
-            # Get document-specific extraction prompt
-            prompt = self._get_extraction_prompt(
-                document_type, page_num, total_pages, filename)
-
-            # Create message with image
-            message = HumanMessage(
-                content=[
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{image_b64}"}
-                    }
-                ]
-            )
-
-            # Get response from vision LLM
-            response = self.vision_llm.invoke([message])
-            return response.content
-
-        except Exception as e:
-            return f"[PAGE {page_num} EXTRACTION FAILED: {str(e)}]"
+            return f"[PDF DIRECT EXTRACTION ERROR FOR {filename}: {str(e)}]"
 
     def _get_extraction_prompt(
         self,
         document_type: DocumentType,
-        page_num: int,
-        total_pages: int,
         filename: str
     ) -> str:
         """Generate document-specific extraction prompt for comprehensive analysis."""
 
         base_prompt = f"""
-You are analyzing page {page_num} of {total_pages} from a {document_type.value} document ({filename}).
+You are analyzing a {document_type.value} document ({filename}) using OpenAI's direct PDF processing capabilities.
 
-EXTRACT EVERYTHING visible in this image with maximum detail and accuracy. Focus on:
+EXTRACT EVERYTHING visible in this PDF with maximum detail and accuracy. Focus on:
 
 1. **ALL TEXT CONTENT**: Every word, number, code, reference, signature, stamp
 2. **STRUCTURED DATA**: Tables, forms, lists, sections with their relationships
@@ -488,22 +420,22 @@ IMPORTANT INSTRUCTIONS:
 - Note any inconsistencies, corrections, or unusual markings
 - If text is unclear, indicate [UNCLEAR] but attempt best interpretation
 - Organize output in clear sections with headers
-- Include page layout context (where information appears)
+- Include document layout context (where information appears)
+- Extract content from ALL pages of the PDF
 
 Provide comprehensive, structured extraction suitable for fraud detection analysis.
 """
 
     async def _generate_document_summary_async(
         self,
-        combined_content: str,
+        extracted_content: str,
         document_type: DocumentType,
-        filename: str,
-        page_count: int
+        filename: str
     ) -> str:
         """Generate a comprehensive document summary with key data points."""
 
         summary_prompt = f"""
-Based on the comprehensive page-by-page extraction below, create a MASTER DOCUMENT SUMMARY for this {document_type.value} ({filename}, {page_count} pages).
+Based on the comprehensive PDF extraction below, create a MASTER DOCUMENT SUMMARY for this {document_type.value} ({filename}).
 
 PROVIDE:
 1. **DOCUMENT OVERVIEW**: Type, number, date, parties involved
@@ -517,25 +449,37 @@ PROVIDE:
 STRUCTURE THE SUMMARY FOR MAXIMUM UTILITY IN FRAUD DETECTION ANALYSIS.
 
 Original extracted content:
-{combined_content}
+{extracted_content}
 """
 
         try:
-            # Use the instance summary LLM
-            response = await self.summary_llm.ainvoke(summary_prompt)
+            # Use OpenAI client for summary generation
+            response = self.client.chat.completions.create(
+                model=self.summary_model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": summary_prompt
+                    }
+                ],
+                max_tokens=2048,
+                temperature=0.1
+            )
+
+            summary_content = response.choices[0].message.content
 
             # Combine summary with original content
             final_content = f"""
 === COMPREHENSIVE DOCUMENT ANALYSIS ===
 Document: {filename}
 Type: {document_type.value}
-Pages: {page_count}
-Extraction Method: Vision LLM Analysis
+Extraction Method: OpenAI Direct PDF Processing
+Model: {self.vision_model_name}
 
-{response.content}
+{summary_content}
 
-=== DETAILED PAGE-BY-PAGE EXTRACTION ===
-{combined_content}
+=== DETAILED PDF EXTRACTION ===
+{extracted_content}
 """
             return final_content
 
@@ -545,23 +489,21 @@ Extraction Method: Vision LLM Analysis
 === DOCUMENT EXTRACTION ===
 Document: {filename}
 Type: {document_type.value}
-Pages: {page_count}
 Note: Summary generation failed, showing detailed extraction only
 
-{combined_content}
+{extracted_content}
 """
 
     def _generate_document_summary(
         self,
-        combined_content: str,
+        extracted_content: str,
         document_type: DocumentType,
-        filename: str,
-        page_count: int
+        filename: str
     ) -> str:
         """Generate a comprehensive document summary with key data points."""
 
         summary_prompt = f"""
-Based on the comprehensive page-by-page extraction below, create a MASTER DOCUMENT SUMMARY for this {document_type.value} ({filename}, {page_count} pages).
+Based on the comprehensive PDF extraction below, create a MASTER DOCUMENT SUMMARY for this {document_type.value} ({filename}).
 
 PROVIDE:
 1. **DOCUMENT OVERVIEW**: Type, number, date, parties involved
@@ -575,25 +517,37 @@ PROVIDE:
 STRUCTURE THE SUMMARY FOR MAXIMUM UTILITY IN FRAUD DETECTION ANALYSIS.
 
 Original extracted content:
-{combined_content}
+{extracted_content}
 """
 
         try:
-            # Use the instance summary LLM
-            response = self.summary_llm.invoke(summary_prompt)
+            # Use OpenAI client for summary generation
+            response = self.client.chat.completions.create(
+                model=self.summary_model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": summary_prompt
+                    }
+                ],
+                max_tokens=2048,
+                temperature=0.1
+            )
+
+            summary_content = response.choices[0].message.content
 
             # Combine summary with original content
             final_content = f"""
 === COMPREHENSIVE DOCUMENT ANALYSIS ===
 Document: {filename}
 Type: {document_type.value}
-Pages: {page_count}
-Extraction Method: Vision LLM Analysis
+Extraction Method: OpenAI Direct PDF Processing
+Model: {self.vision_model_name}
 
-{response.content}
+{summary_content}
 
-=== DETAILED PAGE-BY-PAGE EXTRACTION ===
-{combined_content}
+=== DETAILED PDF EXTRACTION ===
+{extracted_content}
 """
             return final_content
 
@@ -603,10 +557,9 @@ Extraction Method: Vision LLM Analysis
 === DOCUMENT EXTRACTION ===
 Document: {filename}
 Type: {document_type.value}
-Pages: {page_count}
 Note: Summary generation failed, showing detailed extraction only
 
-{combined_content}
+{extracted_content}
 """
 
     @staticmethod
@@ -617,37 +570,37 @@ Note: Summary generation failed, showing detailed extraction only
     def get_processor_info(self) -> Dict[str, Any]:
         """Get information about the vision processor."""
         return {
-            "processor_type": "Vision LLM PDF Processor",
+            "processor_type": "OpenAI Direct PDF Processor",
             "vision_model": self.vision_model_name,
             "summary_model": self.summary_model_name,
             "capabilities": [
-                "PDF to image conversion",
+                "Direct PDF processing (no image conversion)",
                 "Vision-based text extraction",
                 "Structured data recognition",
                 "Document-specific analysis",
                 "Comprehensive content extraction",
-                "Fraud detection optimization"
+                "Fraud detection optimization",
+                "File upload method for efficiency"
             ]
         }
 
     def update_vision_model(self, new_model: str) -> None:
         """Update the vision model used for document extraction."""
         try:
-            # Test the new model
-            test_llm = ChatOpenAI(
+            # Test the new model with a simple text message
+            test_response = self.client.chat.completions.create(
                 model=new_model,
-                temperature=0.1,
-                max_tokens=4096,
-                api_key=settings.openai_api_key
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Test message"
+                    }
+                ],
+                max_tokens=10
             )
-
-            # Test with a simple text message to validate the model
-            test_message = HumanMessage(content="Test message")
-            test_llm.invoke([test_message])
 
             # Update if successful
             self.vision_model_name = new_model
-            self.vision_llm = test_llm
 
         except Exception as e:
             raise ValueError(f"Invalid vision model '{new_model}': {str(e)}")
@@ -655,20 +608,20 @@ Note: Summary generation failed, showing detailed extraction only
     def update_summary_model(self, new_model: str) -> None:
         """Update the summary model used for document summarization."""
         try:
-            # Test the new model
-            test_llm = ChatOpenAI(
+            # Test the new model with a simple message
+            test_response = self.client.chat.completions.create(
                 model=new_model,
-                temperature=0.1,
-                api_key=settings.openai_api_key
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Test message"
+                    }
+                ],
+                max_tokens=10
             )
-
-            # Test with a simple message to validate the model
-            test_message = "Test message"
-            test_llm.invoke(test_message)
 
             # Update if successful
             self.summary_model_name = new_model
-            self.summary_llm = test_llm
 
         except Exception as e:
             raise ValueError(f"Invalid summary model '{new_model}': {str(e)}")

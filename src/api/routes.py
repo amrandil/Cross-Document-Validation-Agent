@@ -368,6 +368,9 @@ async def analyze_documents_stream(
 
             yield f"data: {json.dumps({'type': 'preprocessing_started', 'bundle_id': bundle_id, 'message': 'Preprocessing files...'})}\n\n"
 
+            # Ensure initial messages are sent before any file processing
+            await asyncio.sleep(0.1)
+
             for i, file in enumerate(files):
                 content = await file.read()
                 filename = file.filename or "unknown"
@@ -386,8 +389,8 @@ async def analyze_documents_stream(
                 if filename.lower().endswith('.pdf') or VisionPDFProcessor.is_pdf(content):
                     # Set up streaming callback for this file
                     async def streaming_callback(update):
-                        # Send preprocessing updates to the client
-                        yield f"data: {json.dumps(update)}\n\n"
+                        # Send preprocessing updates to the client via the stream queue
+                        await stream_queue.put(update)
 
                     add_streaming_callback(streaming_callback)
 
@@ -398,6 +401,28 @@ async def analyze_documents_stream(
                             filename,
                             doc_type
                         )
+
+                        # Process any queued updates immediately
+                        while not stream_queue.empty():
+                            try:
+                                update = stream_queue.get_nowait()
+                                yield f"data: {json.dumps(update)}\n\n"
+                            except asyncio.QueueEmpty:
+                                break
+
+                        # Ensure any remaining updates are sent
+                        await asyncio.sleep(0.1)
+
+                        # Send extracted content update after processing is complete
+                        yield f"data: {json.dumps({
+                            'type': 'extracted_content',
+                            'filename': filename,
+                            'document_type': doc_type.value,
+                            'content': content_str,
+                            'content_length': f"{len(content_str):,} chars",
+                            'message': f'Content extracted from {filename}'
+                        })}\n\n"
+
                     except Exception as e:
                         yield f"data: {json.dumps({
                             'type': 'file_error',

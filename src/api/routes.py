@@ -20,7 +20,7 @@ from ..utils.vision_pdf_processor import VisionPDFProcessor
 from ..utils.logging_config import (
     log_step, log_document, log_performance, log_error,
     log_llm, log_agent, log_fraud, set_streaming_bundle_id,
-    add_streaming_callback, remove_streaming_callback
+    add_streaming_callback, remove_streaming_callback, logger
 )
 
 router = APIRouter()
@@ -395,23 +395,38 @@ async def analyze_documents_stream(
                     add_streaming_callback(streaming_callback)
 
                     try:
-                        # Use async version for streaming updates
-                        content_str = await vision_processor.extract_comprehensive_content_async(
-                            content,
-                            filename,
-                            doc_type
+                        # Start PDF processing in background while monitoring the queue
+                        processing_task = asyncio.create_task(
+                            vision_processor.extract_comprehensive_content_async(
+                                content,
+                                filename,
+                                doc_type
+                            )
                         )
 
-                        # Process any queued updates immediately
+                        # Monitor the queue and process updates in real-time
+                        while not processing_task.done():
+                            try:
+                                # Process any available updates with a short timeout
+                                update = await asyncio.wait_for(stream_queue.get(), timeout=0.05)
+                                yield f"data: {json.dumps(update)}\n\n"
+                            except asyncio.TimeoutError:
+                                # No update available, continue monitoring
+                                continue
+                            except asyncio.QueueEmpty:
+                                # Queue is empty, continue monitoring
+                                continue
+
+                        # Get the result from the processing task
+                        content_str = await processing_task
+
+                        # Process any remaining updates in the queue
                         while not stream_queue.empty():
                             try:
                                 update = stream_queue.get_nowait()
                                 yield f"data: {json.dumps(update)}\n\n"
                             except asyncio.QueueEmpty:
                                 break
-
-                        # Ensure any remaining updates are sent
-                        await asyncio.sleep(0.1)
 
                         # Send extracted content update after processing is complete
                         yield f"data: {json.dumps({

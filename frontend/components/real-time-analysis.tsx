@@ -578,47 +578,9 @@ export default function RealTimeAnalysis({
                     );
                   }
 
-                  // Handle preprocessing started message
+                  // Handle preprocessing started message - removed per user request
                   if (update.type === "preprocessing_started") {
-                    return (
-                      <div
-                        key={`preprocessing-started-${index}`}
-                        className="flex space-x-3"
-                      >
-                        <div className="flex-shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                            {preprocessingCompleted ? (
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <div
-                            className={cn(
-                              "border rounded-lg p-3",
-                              preprocessingCompleted
-                                ? "bg-green-50 border-green-200"
-                                : "bg-blue-50 border-blue-200"
-                            )}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <span
-                                className={cn(
-                                  "text-sm font-medium",
-                                  preprocessingCompleted
-                                    ? "text-green-800"
-                                    : "text-blue-800"
-                                )}
-                              >
-                                {update.message}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
+                    return null;
                   }
 
                   // Handle preprocessing steps
@@ -762,11 +724,7 @@ export default function RealTimeAnalysis({
                                 {isCompleted ? "Completed" : "Processing..."}
                               </span>
                             </div>
-                            {update.message && (
-                              <p className="text-xs text-gray-600 mt-1">
-                                {update.message}
-                              </p>
-                            )}
+                            {/* Message removed per user request */}
                           </div>
                         </div>
                       </div>
@@ -1090,23 +1048,8 @@ export default function RealTimeAnalysis({
                 return null;
               }
 
-              // Default case for other update types
-              return (
-                <div key={index} className="flex space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                      <Info className="h-4 w-4 text-gray-600" />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <div className="text-sm text-gray-700">
-                        {update.message || JSON.stringify(update)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
+              // Default case for other update types - removed grey message display per user request
+              return null;
             })}
           </div>
         </div>

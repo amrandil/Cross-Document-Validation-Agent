@@ -148,31 +148,31 @@ class VisionPDFProcessor:
             await asyncio.sleep(0.1)
 
             # Generate document summary and structure
-            log_step("preprocess",
-                     message="Generating document summary", filename=filename)
-            await log_preprocessing_step("generating_summary", filename=filename,
-                                         message="Generating comprehensive document summary")
+            # log_step("preprocess",
+            #         message="Generating document summary", filename=filename)
+            # await log_preprocessing_step("generating_summary", filename=filename,
+            #                             message="Generating comprehensive document summary")
 
             # Small delay to ensure the update is sent
-            await asyncio.sleep(0.1)
+            # await asyncio.sleep(0.1)
 
-            final_content = await self._generate_document_summary_async(
-                extracted_content,
-                document_type,
-                filename
-            )
+            # final_content = await self._generate_document_summary_async(
+            #    extracted_content,
+            #    document_type,
+            #    filename
+            # )
 
             extraction_time = time.time() - start_time
             log_performance("pdf_direct_extraction", extraction_time,
                             filename=filename)
 
             log_step("complete", message="PDF direct extraction completed",
-                     filename=filename, final_length=f"{len(final_content):,} chars",
+                     filename=filename, final_length=f"{len(extracted_content):,} chars",
                      extraction_time=f"{extraction_time:.2f}s")
 
             # Stream completion
             await log_preprocessing_step("completed", filename=filename,
-                                         final_length=f"{len(final_content):,} chars",
+                                         final_length=f"{len(extracted_content):,} chars",
                                          extraction_time=f"{extraction_time:.2f}s",
                                          message="PDF processing completed successfully")
 
@@ -185,7 +185,8 @@ class VisionPDFProcessor:
                 log_error("file_cleanup_error", f"Failed to delete uploaded file {file.id}",
                           filename=filename, error=str(e))
 
-            return final_content
+            # return final_content
+            return extracted_content
 
         except Exception as e:
             extraction_time = time.time() - start_time
@@ -334,97 +335,456 @@ class VisionPDFProcessor:
     ) -> str:
         """Generate document-specific extraction prompt for comprehensive analysis."""
 
-        base_prompt = f"""
-You are analyzing a {document_type.value} document ({filename}) using OpenAI's direct PDF processing capabilities.
+        # base_prompt = f"""
+        #    You are analyzing a {document_type.value} document ({filename}) using OpenAI's direct PDF processing capabilities.
 
-EXTRACT EVERYTHING visible in this PDF with maximum detail and accuracy. Focus on:
+        #    EXTRACT EVERYTHING visible in this PDF with maximum detail and accuracy. Focus on:
 
-1. **ALL TEXT CONTENT**: Every word, number, code, reference, signature, stamp
-2. **STRUCTURED DATA**: Tables, forms, lists, sections with their relationships
-3. **METADATA**: Dates, document numbers, reference codes, certifications
-4. **ENTITIES**: Company names, addresses, contact information, officials
-5. **FINANCIAL DATA**: All amounts, currencies, calculations, totals, taxes
-6. **QUANTITIES & MEASUREMENTS**: Weights, dimensions, counts, units
-7. **SHIPPING/LOGISTICS**: Ports, vessels, containers, routing, tracking numbers
-8. **REGULATORY INFO**: Licenses, permits, classifications, compliance codes
-9. **SIGNATURES & STAMPS**: Official marks, certifications, authorizations
-10. **LAYOUT CONTEXT**: How information is organized and related
+        #    1. **ALL TEXT CONTENT**: Every word, number, code, reference, signature, stamp
+        #    2. **STRUCTURED DATA**: Tables, forms, lists, sections with their relationships
+        #    3. **METADATA**: Dates, document numbers, reference codes, certifications
+        #    4. **ENTITIES**: Company names, addresses, contact information, officials
+        #    5. **FINANCIAL DATA**: All amounts, currencies, calculations, totals, taxes
+        #    6. **QUANTITIES & MEASUREMENTS**: Weights, dimensions, counts, units
+        #    7. **SHIPPING/LOGISTICS**: Ports, vessels, containers, routing, tracking numbers
+        #    8. **REGULATORY INFO**: Licenses, permits, classifications, compliance codes
+        #    9. **SIGNATURES & STAMPS**: Official marks, certifications, authorizations
+        #    10. **LAYOUT CONTEXT**: How information is organized and related
 
-"""
+        # """
+
+        # base_prompt = """
+        #    # System Prompt: Customs Declaration Document Data Extraction
+
+        #    ## Role and Purpose
+        #    You are a specialized document processing AI designed to extract comprehensive data from customs declaration documents. Your primary function is to analyze various types of trade and shipping documents and present the extracted information in a structured, organized format.
+
+        #    ## Document Types You Will Process
+        #    - **Air Waybills (AWB/HAWB)**
+        #    - **Bills of Lading**
+        #    - **Commercial Invoices**
+        #    - **Packing Lists**
+        #    - **Customs Declaration Forms**
+        #    - **Certificates of Origin**
+        #    - **Export/Import Licenses**
+        #    - **Insurance Documents**
+        #    - **Shipping Instructions**
+        #    - **Other trade-related documentation**
+
+        #    ## Extraction Requirements
+
+        #    ### 1. Complete Data Capture
+        #    Extract ALL visible information from the document, including:
+        #    - Header information and document identifiers
+        #    - Company names, addresses, and contact details
+        #    - Financial data (amounts, currencies, rates)
+        #    - Product descriptions and specifications
+        #    - Shipping and logistics information
+        #    - Regulatory and compliance data
+        #    - Signatures and authorizations
+        #    - Terms and conditions
+        #    - Reference numbers and codes
+
+        #    ### 2. Structural Elements
+        #    Accurately capture and represent:
+        #    - **Tables**: Preserve row/column relationships with clear headers
+        #    - **Lists**: Maintain hierarchy and numbering
+        #    - **Forms**: Extract field labels and their corresponding values
+        #    - **Multi-column layouts**: Organize data logically
+        #    - **Checkboxes and selections**: Indicate marked/unmarked status
+
+        #    ### 3. Multi-Page Processing
+        #    For documents spanning multiple pages:
+        #    - Clearly indicate page breaks and page numbers
+        #    - Maintain document flow and context across pages
+        #    - Identify page-specific vs. document-wide information
+        #    - Cross-reference related information between pages
+
+        #    ## Output Format
+
+        #    Present extracted data in **Markdown format** with the following structure:
+
+        #    ```markdown
+        #    # Document Analysis Report
+
+        #    ## Document Overview
+        #    - **Document Type**: [Type of document]
+        #    - **Document Number**: [Primary identifier]
+        #    - **Total Pages**: [Number of pages]
+        #    - **Processing Date**: [Current date]
+
+        #    ## Page-by-Page Extraction
+
+        #    ### Page 1
+        #    [All content from page 1, organized by sections]
+
+        #    ### Page 2
+        #    [All content from page 2, organized by sections]
+
+        #    [Continue for all pages...]
+
+        #    ## Consolidated Summary
+        #    [Key information aggregated across all pages]
+        #    ```
+
+        #    ## Detailed Extraction Guidelines
+
+        #    ### Party Information
+        #    Extract complete details for:
+        #    - **Shipper/Exporter**
+        #    - **Consignee/Importer**
+        #    - **Notify Party**
+        #    - **Forwarding Agent**
+        #    - **Carrier/Shipping Line**
+
+        #    For each party, capture:
+        #    - Full legal name
+        #    - Complete address
+        #    - Contact information (phone, fax, email)
+        #    - Registration/Tax numbers
+        #    - Account numbers
+
+        #    ### Product/Cargo Information
+        #    For each line item, extract:
+        #    - Product description
+        #    - Quantity and units
+        #    - Weight (gross/net)
+        #    - Dimensions/volume
+        #    - Value and currency
+        #    - HS codes/commodity codes
+        #    - Country of origin
+        #    - Batch/lot numbers
+
+        #    ### Financial Data
+        #    Capture all monetary information:
+        #    - Freight charges
+        #    - Insurance costs
+        #    - Duties and taxes
+        #    - Surcharges and fees
+        #    - Total amounts
+        #    - Currency specifications
+        #    - Payment terms
+
+        #    ### Shipping Details
+        #    Extract logistics information:
+        #    - Origin and destination
+        #    - Ports/airports
+        #    - Vessel/flight information
+        #    - Container numbers
+        #    - Routing instructions
+        #    - Delivery terms (Incoterms)
+
+        #    ### Regulatory Information
+        #    Identify and extract:
+        #    - Customs declarations
+        #    - Export/import licenses
+        #    - Certificates required
+        #    - Compliance statements
+        #    - Restricted/dangerous goods declarations
+
+        #    ## Table Processing Instructions
+
+        #    When encountering tables:
+        #    1. **Identify table structure** (headers, data rows, subtotals)
+        #    2. **Preserve column relationships**
+        #    3. **Use Markdown table format** where appropriate
+        #    4. **Handle spanning cells** and merged content
+        #    5. **Capture calculations** and totals
+
+        #    Example table format:
+        #    ```markdown
+        #    | Column 1 | Column 2 | Column 3 |
+        #    |----------|----------|----------|
+        #    | Data 1   | Data 2   | Data 3   |
+        #    | Data 4   | Data 5   | Data 6   |
+        #    ```
+
+        #    ## Quality Standards
+
+        #    ### Accuracy Requirements
+        #    - **Zero tolerance** for missing critical data
+        #    - **Exact transcription** of numbers, codes, and identifiers
+        #    - **Consistent formatting** throughout the extraction
+        #    - **Clear indication** of any unclear or partially visible text
+
+        #    ### Completeness Checklist
+        #    Before finalizing extraction, verify:
+        #    - [ ] All parties and their complete information
+        #    - [ ] All product line items with specifications
+        #    - [ ] All financial data and calculations
+        #    - [ ] All reference numbers and codes
+        #    - [ ] All dates and time-sensitive information
+        #    - [ ] All regulatory and compliance data
+        #    - [ ] All signatures and authorizations
+
+        #    ## Error Handling
+
+        #    When encountering issues:
+        #    - **Unclear text**: Use `[UNCLEAR: partial_text]` notation
+        #    - **Missing information**: Use `[NOT_VISIBLE]` or `[BLANK]`
+        #    - **Damaged sections**: Use `[DAMAGED_SECTION]`
+        #    - **Uncertain interpretation**: Use `[UNCERTAIN: possible_interpretation]`
+
+        #    ## Special Instructions
+
+        #    ### Document Integrity
+        #    - Maintain the logical flow of information
+        #    - Preserve the relationship between related sections
+        #    - Ensure cross-references are clearly indicated
+
+        #    ### Cultural and Language Considerations
+        #    - Accurately transcribe names and addresses in original language/script
+        #    - Note any translations or interpretations made
+        #    - Preserve original formatting for addresses and formal names
+
+        #    ### Compliance Focus
+        #    Pay special attention to:
+        #    - Regulatory compliance statements
+        #    - Dangerous goods declarations
+        #    - Export control information
+        #    - Sanctions and restricted party data
+
+        #    ## Final Output Validation
+
+        #    Before submitting the extraction:
+        #    1. **Review completeness** against the original document
+        #    2. **Verify numerical accuracy** of all financial data
+        #    3. **Check consistency** of party information across sections
+        #    4. **Ensure proper formatting** and readability
+        #    5. **Confirm page organization** and cross-references
+
+        #    Remember: Your extraction will be used for critical business and regulatory purposes. Accuracy, completeness, and clear organization are paramount.
+        # """
+
+        base_prompt = """
+            # System Prompt: Complete Document Data Extraction
+
+## Primary Objective
+Your task is to perform **COMPLETE AND EXHAUSTIVE** extraction of ALL textual content from any document provided. You must capture every single piece of visible text, number, code, symbol, and data element without exception.
+
+## Core Principle: CAPTURE EVERYTHING
+**DO NOT SELECTIVELY EXTRACT** - Read and transcribe the entire document from top to bottom, left to right. Treat every character, word, number, and symbol as potentially important.
+
+## Fundamental Rules
+
+### 1. Total Coverage Requirement
+- Extract **100% of all visible text** in the document
+- Include headers, footers, watermarks, and marginal text
+- Capture form field labels AND their values
+- Include all numbers, codes, references, and identifiers
+- Transcribe all company names, addresses, and contact information
+- Record all dates, times, and temporal references
+- Include all monetary amounts and calculations
+- Capture all product descriptions and specifications
+- Include all terms, conditions, and legal text
+- Record all signatures, stamps, and authorization elements
+
+### 2. Structural Preservation
+- Maintain the **exact visual organization** of the document
+- Preserve table structures with proper row/column alignment
+- Maintain list hierarchies and numbering systems
+- Keep form layouts and field relationships intact
+- Preserve spatial relationships between elements
+- Maintain the logical flow from top to bottom, left to right
+
+### 3. Page-by-Page Processing
+For multi-page documents:
+- Process each page completely before moving to the next
+- Clearly mark page boundaries
+- Maintain document continuity and context
+- Note any page headers/footers that repeat
+- Preserve cross-page references and relationships
+
+## Output Format Requirements
+
+Structure your output as follows:
+
+```markdown
+# Complete Document Extraction
+
+## Document Summary
+- **Total Pages**: [number]
+- **Document Characteristics**: [brief description of document type/layout]
+- **Extraction Date**: [current date]
+
+---
+
+## PAGE 1
+
+[Transcribe EVERY element on page 1 in reading order - top to bottom, left to right]
+
+### [Section Name if identifiable]
+[All content in this section]
+
+### [Next Section Name]
+[All content in this section]
+
+[Continue until page 1 is completely captured]
+
+---
+
+## PAGE 2
+
+[Transcribe EVERY element on page 2 in the same manner]
+
+[Continue for all pages...]
+
+---
+
+## Document Completion Verification
+- [ ] All text from every page captured
+- [ ] All tables fully transcribed
+- [ ] All numbers and codes included
+- [ ] All company/party information recorded
+- [ ] All form fields and values captured
+- [ ] All fine print and conditions included
+```
+
+## Specific Processing Instructions
+
+### Text Processing
+- **Read systematically**: Start from the top-left, move right, then down
+- **Miss nothing**: Include seemingly insignificant text like form numbers, revision dates, small print
+- **Maintain context**: Keep related information together when possible
+- **Preserve formatting**: Use appropriate markdown to maintain visual structure
+
+### Table Handling
+When encountering tables:
+1. **Identify the complete table structure** including all headers and subheaders
+2. **Capture every cell** - including empty cells (mark as [EMPTY])
+3. **Preserve merged cells** and spanning elements
+4. **Include all totals, subtotals, and calculations**
+5. **Use proper markdown table format** to maintain readability
+
+### Forms and Fields
+For forms and structured layouts:
+- **Extract both labels and values**: "Field Name: Value" or "Field Name: [BLANK]"
+- **Include checkbox states**: [✓] for checked, [ ] for unchecked
+- **Capture dropdown selections** and available options when visible
+- **Note any handwritten entries** or annotations
+
+### Handling Unclear Content
+- **Unclear text**: `[UNCLEAR: best_guess]`
+- **Completely illegible**: `[ILLEGIBLE]`
+- **Partially visible**: `[PARTIAL: visible_portion...]`
+- **Empty fields**: `[BLANK]` or `[EMPTY]`
+- **Damaged areas**: `[DAMAGED]`
+
+## Quality Assurance Protocol
+
+### Before Submitting Your Extraction:
+
+1. **Completeness Check**:
+   - Scan through the original document page by page
+   - Verify that every visible text element has been captured
+   - Ensure no sections have been skipped or summarized
+
+2. **Accuracy Verification**:
+   - Double-check all numbers and codes for exact transcription
+   - Verify proper names and addresses are correctly spelled
+   - Confirm all currency amounts and calculations
+
+3. **Structure Validation**:
+   - Ensure tables are properly formatted and complete
+   - Verify that page breaks are clearly marked
+   - Confirm that the reading flow is logical and complete
+
+## Critical Success Factors
+
+### What Makes a Perfect Extraction:
+- **Exhaustiveness**: Nothing visible in the document is missing from your extraction
+- **Accuracy**: Every character, number, and symbol is correctly transcribed
+- **Organization**: Information is presented in a logical, readable structure
+- **Completeness**: All pages are fully processed without gaps or omissions
+
+### Common Mistakes to Avoid:
+- ❌ Summarizing instead of transcribing
+- ❌ Skipping "unimportant" text or fine print
+- ❌ Focusing only on main content while missing headers/footers
+- ❌ Incomplete table extraction
+- ❌ Missing form field labels or values
+- ❌ Omitting reference numbers, codes, or identifiers
+- ❌ Failing to capture all contact information and addresses
+
+## Final Instruction
+
+- Your goal is to create an extraction so complete and accurate that someone could reconstruct the essential content and structure of the original document using only your text output. **Leave nothing behind.**
+- Don't add concluding messages/questions to the user.
+
+        """
 
         # Add document-specific instructions
         specific_instructions = {
             DocumentType.COMMERCIAL_INVOICE: """
-COMMERCIAL INVOICE SPECIFIC EXTRACTION:
-- Invoice header: Number, date, terms, currency
-- Seller/Buyer: Complete company details, addresses, tax IDs
-- Line items: Product codes, descriptions, quantities, unit prices, totals
-- Calculations: Subtotals, taxes, discounts, shipping, final total
-- Payment terms, delivery terms, banking details
-- Any certifications or regulatory information
-""",
+                COMMERCIAL INVOICE SPECIFIC EXTRACTION:
+                - Invoice header: Number, date, terms, currency
+                - Seller/Buyer: Complete company details, addresses, tax IDs
+                - Line items: Product codes, descriptions, quantities, unit prices, totals
+                - Calculations: Subtotals, taxes, discounts, shipping, final total
+                - Payment terms, delivery terms, banking details
+                - Any certifications or regulatory information
+                """,
 
             DocumentType.BILL_OF_LADING: """
-BILL OF LADING SPECIFIC EXTRACTION:
-- B/L number, date, type (Master/House)
-- Shipper, consignee, notify party details
-- Vessel name, voyage, port of loading/discharge
-- Container numbers, seal numbers, package details
-- Cargo description, weight, measurement, marks
-- Freight terms, delivery instructions
-- Agent signatures and stamps
-""",
+                BILL OF LADING SPECIFIC EXTRACTION:
+                - B/L number, date, type (Master/House)
+                - Shipper, consignee, notify party details
+                - Vessel name, voyage, port of loading/discharge
+                - Container numbers, seal numbers, package details
+                - Cargo description, weight, measurement, marks
+                - Freight terms, delivery instructions
+                - Agent signatures and stamps
+                """,
 
             DocumentType.PACKING_LIST: """
-PACKING LIST SPECIFIC EXTRACTION:
-- Packing list number, date, reference to invoice/PO
-- Detailed item breakdown: SKUs, descriptions, quantities
-- Package information: boxes, cartons, pallets with contents
-- Dimensions and weights (gross/net) per package
-- Markings, labels, handling instructions
-- Total quantities and package counts
-""",
+                PACKING LIST SPECIFIC EXTRACTION:
+                - Packing list number, date, reference to invoice/PO
+                - Detailed item breakdown: SKUs, descriptions, quantities
+                - Package information: boxes, cartons, pallets with contents
+                - Dimensions and weights (gross/net) per package
+                - Markings, labels, handling instructions
+                - Total quantities and package counts
+                """,
 
             DocumentType.CERTIFICATE_OF_ORIGIN: """
-CERTIFICATE OF ORIGIN SPECIFIC EXTRACTION:
-- Certificate number, issuing authority, date
-- Exporter/producer information and addresses
-- Consignee details and destination country
-- Detailed goods description and origin criteria
-- HS codes, quantities, values
-- Declaration statements and legal text
-- Official signatures, stamps, seals
-""",
+                CERTIFICATE OF ORIGIN SPECIFIC EXTRACTION:
+                - Certificate number, issuing authority, date
+                - Exporter/producer information and addresses
+                - Consignee details and destination country
+                - Detailed goods description and origin criteria
+                - HS codes, quantities, values
+                - Declaration statements and legal text
+                - Official signatures, stamps, seals
+                """,
 
             DocumentType.CUSTOMS_DECLARATION: """
-CUSTOMS DECLARATION SPECIFIC EXTRACTION:
-- Declaration number, date, customs office
-- Importer/exporter details and codes
-- Detailed goods classification and values
-- Duty calculations and payment information
-- Supporting document references
-- Official processing stamps and signatures
-"""
+                CUSTOMS DECLARATION SPECIFIC EXTRACTION:
+                - Declaration number, date, customs office
+                - Importer/exporter details and codes
+                - Detailed goods classification and values
+                - Duty calculations and payment information
+                - Supporting document references
+                - Official processing stamps and signatures
+                """
         }
 
         document_specific = specific_instructions.get(
             document_type,
             "GENERAL DOCUMENT: Extract all visible information systematically."
         )
+        # return base_prompt + document_specific + """
+        return base_prompt + """
+            IMPORTANT INSTRUCTIONS:
+            - Preserve exact numbers, dates, and codes - accuracy is critical for fraud detection
+            - Maintain table structure and relationships between data points
+            - Note any inconsistencies, corrections, or unusual markings
+            - If text is unclear, indicate [UNCLEAR] but attempt best interpretation
+            - Organize output in clear sections with headers
+            - Include document layout context (where information appears)
+            - Extract content from ALL pages of the PDF
 
-        return base_prompt + document_specific + """
-
-IMPORTANT INSTRUCTIONS:
-- Preserve exact numbers, dates, and codes - accuracy is critical for fraud detection
-- Maintain table structure and relationships between data points
-- Note any inconsistencies, corrections, or unusual markings
-- If text is unclear, indicate [UNCLEAR] but attempt best interpretation
-- Organize output in clear sections with headers
-- Include document layout context (where information appears)
-- Extract content from ALL pages of the PDF
-
-Provide comprehensive, structured extraction suitable for fraud detection analysis.
-"""
+            Provide comprehensive, structured extraction suitable for fraud detection analysis.
+        """
 
     async def _generate_document_summary_async(
         self,

@@ -13,6 +13,7 @@ from .prompts import get_agent_prompt_template
 from .memory import FraudDetectionMemory
 from ..tools import get_all_tools
 from ..models.documents import DocumentBundle
+from ..utils.logging_config import workflow_logger
 from ..models.fraud import FraudAnalysisResult, AgentExecution, FraudIndicator, FraudType
 from ..config import settings
 from ..utils.exceptions import AgentExecutionError
@@ -30,7 +31,7 @@ class FraudDetectionAgent:
             temperature=settings.openai_temperature,
             api_key=settings.openai_api_key
         )
-        
+
         # Wrap LLM with logging
         self.llm = LLMLoggingWrapper(self.llm, settings.openai_model)
 
@@ -40,18 +41,18 @@ class FraudDetectionAgent:
 
         # Create agent prompt template
         self.prompt_template = get_agent_prompt_template()
-        
-        log_step("complete", message="FraudDetectionAgent initialized", 
-                model=settings.openai_model, tools_count=len(self.tools))
+
+        log_step("complete", message="FraudDetectionAgent initialized",
+                 model=settings.openai_model, tools_count=len(self.tools))
 
     def analyze_documents(self, bundle: DocumentBundle, options: Optional[Dict[str, Any]] = None) -> AgentExecution:
         """Analyze a document bundle for fraud using ReAct strategy."""
 
         execution_id = str(uuid.uuid4())
         options = options or {}
-        
-        log_step("start", message="Starting ReAct fraud analysis", 
-                execution_id=execution_id, bundle_id=bundle.bundle_id)
+
+        log_step("start", message="Starting ReAct fraud analysis",
+                 execution_id=execution_id, bundle_id=bundle.bundle_id)
 
         # Initialize memory and tracking
         memory = FraudDetectionMemory(execution_id, bundle.bundle_id)
@@ -59,84 +60,90 @@ class FraudDetectionAgent:
         try:
             # Phase 1: Initial Observation
             phase_start = time.time()
-            log_step("start", message="Phase 1: Initial Observation", 
-                    execution_id=execution_id, phase="initial_observation")
-            
+            log_step("start", message="Phase 1: Initial Observation",
+                     execution_id=execution_id, phase="initial_observation")
+
             memory.set_phase("initial_observation")
             initial_observation = self._conduct_initial_observation(bundle)
             memory.add_observation(initial_observation)
-            
+
             phase_time = time.time() - phase_start
-            log_performance("phase_initial_observation", phase_time, execution_id=execution_id)
-            log_step("complete", message="Phase 1: Initial Observation completed", 
-                    execution_id=execution_id, observation_length=len(initial_observation))
+            log_performance("phase_initial_observation",
+                            phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 1: Initial Observation completed",
+                     execution_id=execution_id, observation_length=len(initial_observation))
 
             # Phase 2: Document Extraction
             phase_start = time.time()
-            log_step("start", message="Phase 2: Document Extraction", 
-                    execution_id=execution_id, phase="document_extraction")
-            
+            log_step("start", message="Phase 2: Document Extraction",
+                     execution_id=execution_id, phase="document_extraction")
+
             memory.set_phase("document_extraction")
             extracted_data = self._extract_document_data(bundle, memory)
             memory.update_context("extracted_data", extracted_data)
-            
+
             phase_time = time.time() - phase_start
-            log_performance("phase_document_extraction", phase_time, execution_id=execution_id)
-            log_step("complete", message="Phase 2: Document Extraction completed", 
-                    execution_id=execution_id, extracted_fields=len(extracted_data))
+            log_performance("phase_document_extraction",
+                            phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 2: Document Extraction completed",
+                     execution_id=execution_id, extracted_fields=len(extracted_data))
 
             # Phase 3: Systematic Validation
             phase_start = time.time()
-            log_step("start", message="Phase 3: Systematic Validation", 
-                    execution_id=execution_id, phase="systematic_validation")
-            
+            log_step("start", message="Phase 3: Systematic Validation",
+                     execution_id=execution_id, phase="systematic_validation")
+
             memory.set_phase("systematic_validation")
             validation_results = self._conduct_systematic_validation(
                 bundle, memory, extracted_data)
-            
+
             phase_time = time.time() - phase_start
-            log_performance("phase_systematic_validation", phase_time, execution_id=execution_id)
-            log_step("complete", message="Phase 3: Systematic Validation completed", 
-                    execution_id=execution_id, validation_results=len(validation_results))
+            log_performance("phase_systematic_validation",
+                            phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 3: Systematic Validation completed",
+                     execution_id=execution_id, validation_results=len(validation_results))
 
             # Phase 4: Advanced Pattern Detection
             phase_start = time.time()
-            log_step("start", message="Phase 4: Pattern Detection", 
-                    execution_id=execution_id, phase="pattern_detection")
-            
+            log_step("start", message="Phase 4: Pattern Detection",
+                     execution_id=execution_id, phase="pattern_detection")
+
             memory.set_phase("pattern_detection")
             pattern_results = self._conduct_pattern_detection(
                 bundle, memory, extracted_data, validation_results)
-            
+
             phase_time = time.time() - phase_start
-            log_performance("phase_pattern_detection", phase_time, execution_id=execution_id)
-            log_step("complete", message="Phase 4: Pattern Detection completed", 
-                    execution_id=execution_id, pattern_results=len(pattern_results))
+            log_performance("phase_pattern_detection",
+                            phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 4: Pattern Detection completed",
+                     execution_id=execution_id, pattern_results=len(pattern_results))
 
             # Phase 5: Evidence Synthesis
             phase_start = time.time()
-            log_step("start", message="Phase 5: Evidence Synthesis", 
-                    execution_id=execution_id, phase="evidence_synthesis")
-            
+            log_step("start", message="Phase 5: Evidence Synthesis",
+                     execution_id=execution_id, phase="evidence_synthesis")
+
             memory.set_phase("evidence_synthesis")
             fraud_analysis = self._synthesize_evidence(
                 bundle, memory, extracted_data, validation_results + pattern_results)
-            
+
             phase_time = time.time() - phase_start
-            log_performance("phase_evidence_synthesis", phase_time, execution_id=execution_id)
-            log_step("complete", message="Phase 5: Evidence Synthesis completed", 
-                    execution_id=execution_id, confidence=fraud_analysis.overall_confidence if fraud_analysis else 0)
+            log_performance("phase_evidence_synthesis",
+                            phase_time, execution_id=execution_id)
+            log_step("complete", message="Phase 5: Evidence Synthesis completed",
+                     execution_id=execution_id, confidence=fraud_analysis.overall_confidence if fraud_analysis else 0)
 
             # Complete the execution
             memory.agent_execution.complete_execution(fraud_analysis)
-            
-            log_step("complete", message="ReAct fraud analysis completed successfully", 
-                    execution_id=execution_id, bundle_id=bundle.bundle_id)
+
+            log_step("complete", message="ReAct fraud analysis completed successfully",
+                     execution_id=execution_id, bundle_id=bundle.bundle_id)
 
             return memory.get_agent_execution()
 
         except Exception as e:
-            log_error("agent_execution_error", str(e), execution_id=execution_id, bundle_id=bundle.bundle_id)
+            log_error("agent_execution_error", str(e),
+                      execution_id=execution_id, bundle_id=bundle.bundle_id)
             memory.agent_execution.fail_execution(str(e))
             return memory.get_agent_execution()
 
@@ -360,7 +367,11 @@ class FraudDetectionAgent:
                 })
 
                 tool = next(
-                    tool for tool in self.tools if tool.name == tool_name)
+                    (tool for tool in self.tools if tool.name == tool_name), None)
+
+                if tool is None:
+                    raise ValueError(
+                        f"Tool '{tool_name}' not found in available tools: {self.tool_names}")
 
                 await self._send_step_update(stream_queue, memory, "THOUGHT",
                                              f"Running {tool_name} to check for cross-document inconsistencies.")
@@ -389,7 +400,26 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
+                # Log the error to backend logs with detailed context
+                import traceback
+                workflow_logger.log_error(
+                    error_type="validation_tool_error",
+                    error_message=f"Tool {tool_name} failed: {str(e)}",
+                    tool=tool_name,
+                    bundle_id=bundle.bundle_id,
+                    exception_type=type(e).__name__,
+                    traceback=traceback.format_exc(),
+                    tool_number=i,
+                    total_tools=len(validation_tools)
+                )
+
+                # Send error to frontend
                 await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
+
+                # Add error result to validation results to maintain consistency
+                error_result = f"Error in {tool_name}: {str(e)}"
+                validation_results.append(error_result)
+                memory.add_analysis_result(error_result)
 
         return validation_results
 
@@ -455,7 +485,26 @@ class FraudDetectionAgent:
                 memory.add_analysis_result(result)
 
             except Exception as e:
+                # Log the error to backend logs with detailed context
+                import traceback
+                workflow_logger.log_error(
+                    error_type="pattern_detection_tool_error",
+                    error_message=f"Tool {tool_name} failed: {str(e)}",
+                    tool=tool_name,
+                    bundle_id=bundle.bundle_id,
+                    exception_type=type(e).__name__,
+                    traceback=traceback.format_exc(),
+                    tool_number=i,
+                    total_tools=len(pattern_tools)
+                )
+
+                # Send error to frontend
                 await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in {tool_name}: {str(e)}")
+
+                # Add error result to pattern results to maintain consistency
+                error_result = f"Error in {tool_name}: {str(e)}"
+                pattern_results.append(error_result)
+                memory.add_analysis_result(error_result)
 
         return pattern_results
 
@@ -468,7 +517,11 @@ class FraudDetectionAgent:
         try:
             # Use evidence synthesis tool
             synthesis_tool = next(
-                tool for tool in self.tools if tool.name == "synthesize_fraud_evidence")
+                (tool for tool in self.tools if tool.name == "synthesize_fraud_evidence"), None)
+
+            if synthesis_tool is None:
+                raise ValueError(
+                    f"Evidence synthesis tool 'synthesize_fraud_evidence' not found in available tools: {self.tool_names}")
 
             bundle_data = {
                 "bundle_id": bundle.bundle_id,
@@ -505,7 +558,22 @@ class FraudDetectionAgent:
             return fraud_analysis
 
         except Exception as e:
-            await self._send_step_update(stream_queue, memory, "OBSERVATION", f"Error in evidence synthesis: {str(e)}")
+            # Log detailed error information
+            import traceback
+            workflow_logger.log_error(
+                error_type="evidence_synthesis_error",
+                error_message=f"Evidence synthesis failed: {str(e)}",
+                tool="synthesize_fraud_evidence",
+                bundle_id=bundle.bundle_id,
+                exception_type=type(e).__name__,
+                traceback=traceback.format_exc(),
+                available_tools=self.tool_names,
+                analysis_results_count=len(all_results)
+            )
+
+            # Send user-friendly error message to frontend
+            await self._send_step_update(stream_queue, memory, "OBSERVATION",
+                                         f"Error in evidence synthesis: {str(e)}. Falling back to basic analysis.")
             # Create fallback fraud analysis
             return self._create_fallback_analysis(bundle.bundle_id, all_results, str(e))
 
@@ -716,7 +784,11 @@ class FraudDetectionAgent:
         try:
             # Use evidence synthesis tool
             synthesis_tool = next(
-                tool for tool in self.tools if tool.name == "synthesize_fraud_evidence")
+                (tool for tool in self.tools if tool.name == "synthesize_fraud_evidence"), None)
+
+            if synthesis_tool is None:
+                raise ValueError(
+                    f"Evidence synthesis tool 'synthesize_fraud_evidence' not found in available tools: {self.tool_names}")
 
             bundle_data = {
                 "bundle_id": bundle.bundle_id,
@@ -752,6 +824,21 @@ class FraudDetectionAgent:
             return fraud_analysis
 
         except Exception as e:
+            # Log detailed error information
+            import traceback
+            workflow_logger.log_error(
+                error_type="evidence_synthesis_error",
+                error_message=f"Evidence synthesis failed: {str(e)}",
+                tool="synthesize_fraud_evidence",
+                bundle_id=bundle.bundle_id,
+                exception_type=type(e).__name__,
+                traceback=traceback.format_exc(),
+                available_tools=self.tool_names,
+                analysis_results_count=len(all_results)
+            )
+
+            memory.add_observation(
+                f"Error in evidence synthesis: {str(e)}. Falling back to basic analysis.")
             # Create fallback fraud analysis
             return self._create_fallback_analysis(bundle.bundle_id, all_results, str(e))
 

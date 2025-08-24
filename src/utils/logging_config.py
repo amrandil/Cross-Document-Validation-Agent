@@ -422,8 +422,7 @@ class LLMLoggingWrapper:
                 self.model_name,
                 prompt,
                 response.content,
-                duration,
-                response=response.content
+                duration
             )
 
             return response

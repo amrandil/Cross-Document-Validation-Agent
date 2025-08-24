@@ -34,11 +34,11 @@ def get_all_tools():
         QuantityConsistencyTool(),
         WeightConsistencyTool(),
 
-        # TODO: Fix remaining tools and add them back:
-        # EntityConsistencyTool(),
-        # ProductDescriptionTool(),
-        # ValueConsistencyTool(),
-        # GeographicConsistencyTool(),
+        # Cross-document validation tools
+        EntityConsistencyTool(),
+        ProductDescriptionTool(),
+        ValueConsistencyTool(),
+        GeographicConsistencyTool(),
         # TimingAnomalyTool(),
         # UnitCalculationTool(),
         # WeightRatioTool(),
@@ -47,7 +47,7 @@ def get_all_tools():
         # ProductSubstitutionTool(),
         # OriginManipulationTool(),
         # EntityVariationTool(),
-        # FraudEvidenceSynthesisTool()
+        FraudEvidenceSynthesisTool()
     ]
 
 

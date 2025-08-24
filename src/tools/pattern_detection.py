@@ -186,22 +186,22 @@ class EntityVariationTool(BaseFraudDetectionTool):
 class FraudEvidenceSynthesisTool(BaseFraudDetectionTool):
     """Tool to synthesize all fraud evidence into a comprehensive assessment."""
 
+    _name = "synthesize_fraud_evidence"
+    _description = """Synthesize all fraud detection results into a comprehensive fraud assessment with
+        overall confidence scores, risk levels, and detailed recommendations for customs investigators."""
+
     def __init__(self):
         super().__init__()
-        self.llm = ChatOpenAI(
+        # LLM is created as a property to avoid Pydantic validation issues
+
+    @property
+    def llm(self):
+        """Get ChatOpenAI instance for this tool."""
+        return ChatOpenAI(
             model=settings.openai_model,
             temperature=settings.openai_temperature,
             api_key=settings.openai_api_key
         )
-
-    @property
-    def name(self) -> str:
-        return "synthesize_fraud_evidence"
-
-    @property
-    def description(self) -> str:
-        return """Synthesize all fraud detection results into a comprehensive fraud assessment with
-        overall confidence scores, risk levels, and detailed recommendations for customs investigators."""
 
     def _execute(self, bundle: DocumentBundle, options: Dict[str, Any]) -> str:
         """Synthesize all fraud evidence."""

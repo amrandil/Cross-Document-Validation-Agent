@@ -5,7 +5,7 @@ import time
 import json
 import asyncio
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.background import BackgroundTasks
 from datetime import datetime
@@ -45,79 +45,78 @@ async def health_check():
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_documents(
     request: AnalysisRequest,
+    use_react_agent: bool = Query(False, description="Use the new ReAct agent instead of the fixed-phase agent"),
     executor: FraudDetectionExecutor = Depends(get_fraud_executor)
 ):
     """Analyze documents for fraud detection.
 
     This endpoint accepts a bundle of customs documents and performs
-    comprehensive fraud analysis using the ReAct agent.
+    comprehensive fraud analysis using either the fixed-phase agent or ReAct agent.
     """
     start_time = time.time()
     bundle_id = request.bundle_id or f"bundle_{uuid.uuid4().hex[:8]}"
 
     log_step("start", message="Document analysis request received",
-             bundle_id=bundle_id, documents_count=len(request.documents))
+             bundle_id=bundle_id, documents_count=len(request.documents), use_react_agent=use_react_agent)
 
     try:
         # Generate bundle ID if not provided
         bundle_id = request.bundle_id or f"bundle_{uuid.uuid4().hex[:8]}"
 
-        # Convert request documents to Document objects
-        documents = []
-        for i, doc_data in enumerate(request.documents):
-            try:
-                document = Document(
-                    document_type=DocumentType(doc_data["document_type"]),
-                    filename=doc_data["filename"],
-                    content=doc_data["content"],
-                    metadata=doc_data.get("metadata", {})
-                )
-                documents.append(document)
+        if use_react_agent:
+            # Use ReAct agent with extracted content
+            extracted_content = {}
+            for doc_data in request.documents:
+                extracted_content[doc_data["filename"]] = doc_data["content"]
+            
+            # Execute ReAct analysis
+            execution = executor.execute_react_fraud_analysis(extracted_content, request.options)
+        else:
+            # Use old fixed-phase agent with document bundle
+            # Convert request documents to Document objects
+            documents = []
+            for i, doc_data in enumerate(request.documents):
+                try:
+                    document = Document(
+                        document_type=DocumentType(doc_data["document_type"]),
+                        filename=doc_data["filename"],
+                        content=doc_data["content"],
+                        metadata=doc_data.get("metadata", {})
+                    )
+                    documents.append(document)
 
-                # Log document processing
-                content_size = len(doc_data["content"])
-                log_document(
-                    doc_type=doc_data["document_type"],
-                    file_size=f"{content_size:,} chars",
-                    pages=doc_data.get("metadata", {}).get("pages", 1),
-                    filename=doc_data["filename"],
-                    bundle_id=bundle_id
-                )
+                    # Log document processing
+                    content_size = len(doc_data["content"])
+                    log_document(
+                        doc_type=doc_data["document_type"],
+                        file_size=f"{content_size:,} chars",
+                        pages=doc_data.get("metadata", {}).get("pages", 1),
+                        filename=doc_data["filename"],
+                        bundle_id=bundle_id
+                    )
 
-            except ValueError as e:
-                log_error("validation_error", f"Invalid document type: {doc_data.get('document_type')}",
-                          bundle_id=bundle_id, error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid document type: {doc_data.get('document_type')}. {str(e)}"
-                )
+                except ValueError as e:
+                    log_error("validation_error", f"Invalid document type: {doc_data.get('document_type')}",
+                              bundle_id=bundle_id, error=str(e))
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid document type: {doc_data.get('document_type')}. {str(e)}"
+                    )
 
-        log_step("complete", message="Documents processed",
-                 bundle_id=bundle_id, documents_count=len(documents))
+            log_step("complete", message="Documents processed",
+                     bundle_id=bundle_id, documents_count=len(documents))
 
-        # Create document bundle
-        bundle = DocumentBundle(
-            bundle_id=bundle_id,
-            documents=documents
-        )
+            # Create document bundle
+            bundle = DocumentBundle(
+                bundle_id=bundle_id,
+                documents=documents
+            )
 
-        # Execute fraud analysis
-        log_step("start", message="Starting fraud analysis",
-                 bundle_id=bundle_id)
-        execution = executor.execute_fraud_analysis(bundle, request.options)
+            # Execute analysis using old agent
+            execution = executor.execute_fraud_analysis(bundle, request.options)
 
         # Calculate processing time
-        processing_time = time.time() - start_time
-        log_performance("total_analysis", processing_time, bundle_id=bundle_id)
-
-        # Log fraud detection results
-        if execution.fraud_analysis:
-            confidence = execution.fraud_analysis.confidence
-            indicators = execution.fraud_analysis.indicators
-            log_fraud(confidence, indicators, bundle_id=bundle_id)
-
-        log_step("complete", message="Fraud analysis completed",
-                 bundle_id=bundle_id, execution_id=execution.execution_id)
+        processing_time = int((time.time() - start_time) * 1000)
 
         # Create response
         response = AnalysisResponse(
@@ -126,33 +125,97 @@ async def analyze_documents(
             execution_id=execution.execution_id,
             agent_execution=execution,
             fraud_analysis=execution.fraud_analysis,
-            processing_time_ms=int(processing_time * 1000),
-            documents_processed=len(documents)
+            processing_time_ms=processing_time,
+            documents_processed=len(request.documents)
         )
 
+        log_step("complete", message="Analysis completed",
+                 bundle_id=bundle_id, processing_time=processing_time, use_react_agent=use_react_agent)
         return response
 
     except AgentExecutionError as e:
-        log_error("agent_execution_error", str(e), bundle_id=bundle_id,
-                  execution_id=getattr(e, 'execution_id', None))
+        log_error("agent_execution_error", f"Agent execution error: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent execution failed: {str(e)}"
         )
 
     except DocumentProcessingError as e:
+        log_error("document_processing_error", f"Document processing error: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Document processing failed: {str(e)}"
         )
 
     except FraudDetectionError as e:
+        log_error("fraud_detection_error", f"Fraud detection error: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fraud detection failed: {str(e)}"
         )
 
     except Exception as e:
+        log_error("unexpected_error", f"Unexpected error in analysis: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.post("/analyze/react", response_model=AnalysisResponse)
+async def analyze_documents_react(
+    extracted_content: Dict[str, str],
+    options: Dict[str, Any] = None,
+    executor: FraudDetectionExecutor = Depends(get_fraud_executor)
+):
+    """Analyze extracted document content using the ReAct agent.
+
+    This endpoint accepts extracted text content from documents and performs
+    fraud analysis using the new ReAct agent.
+    """
+    start_time = time.time()
+    bundle_id = f"bundle_{uuid.uuid4().hex[:8]}"
+
+    log_step("start", message="ReAct analysis request received",
+             bundle_id=bundle_id, documents_count=len(extracted_content))
+
+    try:
+        # Execute ReAct analysis
+        execution = executor.execute_react_fraud_analysis(extracted_content, options)
+
+        # Calculate processing time
+        processing_time = int((time.time() - start_time) * 1000)
+
+        # Create response
+        response = AnalysisResponse(
+            success=True,
+            bundle_id=bundle_id,
+            execution_id=execution.execution_id,
+            agent_execution=execution,
+            fraud_analysis=execution.fraud_analysis,
+            processing_time_ms=processing_time,
+            documents_processed=len(extracted_content)
+        )
+
+        log_step("complete", message="ReAct analysis completed",
+                 bundle_id=bundle_id, processing_time=processing_time)
+        return response
+
+    except AgentExecutionError as e:
+        log_error("react_agent_execution_error", f"ReAct agent execution error: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ReAct agent execution failed: {str(e)}"
+        )
+
+    except Exception as e:
+        log_error("react_unexpected_error", f"Unexpected error in ReAct analysis: {str(e)}",
+                  bundle_id=bundle_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -294,10 +357,16 @@ async def analyze_uploaded_documents(
         except json.JSONDecodeError:
             options_dict = {}
 
-        # Execute fraud analysis
-        log_step("start", message="Starting fraud analysis",
+        # Execute fraud analysis using ReAct agent
+        log_step("start", message="Starting ReAct fraud analysis",
                  bundle_id=bundle_id)
-        execution = executor.execute_fraud_analysis(bundle, options_dict)
+        
+        # Convert bundle to extracted content format for ReAct agent
+        extracted_content = {}
+        for doc in documents:
+            extracted_content[doc.filename] = doc.content
+        
+        execution = executor.execute_react_fraud_analysis(extracted_content, options_dict)
 
         # Calculate processing time
         processing_time = time.time() - start_time
@@ -512,10 +581,15 @@ async def analyze_documents_stream(
             except json.JSONDecodeError:
                 options_dict = {}
 
-            # Start streaming analysis in background task
+            # Convert bundle to extracted content format for ReAct agent
+            extracted_content = {}
+            for doc in documents:
+                extracted_content[doc.filename] = doc.content
+            
+            # Start streaming analysis in background task using ReAct agent
             analysis_task = asyncio.create_task(
-                executor.execute_fraud_analysis_stream(
-                    bundle, options_dict, stream_queue)
+                executor.execute_react_fraud_analysis_stream(
+                    extracted_content, options_dict, stream_queue)
             )
 
             # Consume queue and yield updates in real-time

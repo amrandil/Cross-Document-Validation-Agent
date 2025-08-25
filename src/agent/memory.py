@@ -5,6 +5,9 @@ from langchain.memory import ConversationBufferMemory
 from datetime import datetime
 
 from ..models.fraud import AgentExecution, AgentStep
+from ..utils.logging_config import workflow_logger
+
+logger = workflow_logger.logger
 
 
 class FraudDetectionMemory:
@@ -31,6 +34,22 @@ class FraudDetectionMemory:
         self.analysis_results: List[str] = []
         self.current_phase = "initial_observation"
         self.investigation_context: Dict[str, Any] = {}
+
+        # ReAct agent specific state
+        self.fraud_indicators: List[str] = []
+        self.evidence: List[str] = []
+        self.executed_tools: List[str] = []
+        self.iteration_count: int = 0
+        self.confidence_level: float = 0.0
+        self.extracted_content: Dict[str, str] = {}
+
+    def initialize_investigation(self, extracted_content: Dict[str, str]):
+        """Initialize investigation with extracted content."""
+        self.extracted_content = extracted_content
+        self.iteration_count = 0
+        self.confidence_level = 0.0
+        logger.info(
+            f"Initialized investigation with {len(extracted_content)} documents")
 
     def add_step(self, step_type: str, content: str, tool_used: Optional[str] = None,
                  tool_input: Optional[Dict[str, Any]] = None, tool_output: Optional[str] = None) -> AgentStep:
@@ -69,6 +88,14 @@ class FraudDetectionMemory:
 
     def add_action(self, content: str, tool_used: str, tool_input: Dict[str, Any], tool_output: str) -> AgentStep:
         """Add an action step with tool usage."""
+        # Track executed tools
+        if tool_used and tool_used not in self.executed_tools:
+            self.executed_tools.append(tool_used)
+
+        # Add analysis result
+        if tool_output:
+            self.analysis_results.append(tool_output)
+
         return self.add_step("ACTION", content, tool_used, tool_input, tool_output)
 
     def update_extracted_data(self, document_type: str, data: Dict[str, Any]):
@@ -131,7 +158,70 @@ class FraudDetectionMemory:
     def clear_memory(self):
         """Clear conversation memory while preserving execution trace."""
         self.conversation_memory.clear()
+        logger.info("Cleared conversation memory")
 
     def get_agent_execution(self) -> AgentExecution:
         """Get current agent execution object."""
         return self.agent_execution
+
+    # ReAct agent specific methods
+    def get_fraud_indicators(self) -> List[str]:
+        """Get fraud indicators found during investigation."""
+        return self.fraud_indicators.copy()
+
+    def add_fraud_indicator(self, indicator: str):
+        """Add a fraud indicator."""
+        if indicator not in self.fraud_indicators:
+            self.fraud_indicators.append(indicator)
+            logger.debug(f"Added fraud indicator: {indicator}")
+
+    def get_evidence(self) -> List[str]:
+        """Get evidence collected during investigation."""
+        return self.evidence.copy()
+
+    def add_evidence(self, evidence_item: str):
+        """Add evidence item."""
+        if evidence_item not in self.evidence:
+            self.evidence.append(evidence_item)
+            logger.debug(f"Added evidence: {evidence_item}")
+
+    def get_executed_tools(self) -> List[str]:
+        """Get list of executed tools."""
+        return self.executed_tools.copy()
+
+    def get_iteration_count(self) -> int:
+        """Get current iteration count."""
+        return self.iteration_count
+
+    def set_iteration_count(self, count: int):
+        """Set iteration count."""
+        self.iteration_count = count
+
+    def get_confidence_level(self) -> float:
+        """Get current confidence level."""
+        return self.confidence_level
+
+    def update_confidence(self, confidence: float):
+        """Update confidence level."""
+        self.confidence_level = confidence
+        logger.debug(f"Updated confidence level: {confidence}")
+
+    def get_analysis_results(self) -> List[str]:
+        """Get all analysis results."""
+        return self.analysis_results.copy()
+
+    def get_extracted_content(self) -> Dict[str, str]:
+        """Get extracted content from documents."""
+        return self.extracted_content.copy()
+
+    def get_current_state(self) -> Dict[str, Any]:
+        """Get current investigation state for ReAct agent."""
+        return {
+            "extracted_content": self.extracted_content,
+            "fraud_indicators": self.fraud_indicators,
+            "evidence": self.evidence,
+            "executed_tools": self.executed_tools,
+            "iteration_count": self.iteration_count,
+            "confidence_level": self.confidence_level,
+            "analysis_results": self.analysis_results
+        }

@@ -92,6 +92,14 @@ interface StreamUpdate {
   count?: number;
   // Extracted content fields
   extracted_content?: string;
+  // ReAct Agent specific fields
+  iteration?: number;
+  observation?: string;
+  reasoning?: string;
+  confidence?: number;
+  recommended_action?: string;
+  action_result?: string;
+  reasoning_type?: string;
 }
 
 interface RealTimeAnalysisProps {
@@ -187,18 +195,74 @@ export default function RealTimeAnalysis({
   const [preprocessingCompleted, setPreprocessingCompleted] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
+  // Word-by-word streaming state
+  const [streamingContent, setStreamingContent] = useState<{
+    [key: string]: string;
+  }>({});
+  const [isStreamingContent, setIsStreamingContent] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
   const streamRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startConsumedRef = useRef<number | null>(null);
   const isStartingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Auto-scroll to bottom when new updates arrive
+  // Auto-scroll to bottom when new updates arrive or during streaming
   useEffect(() => {
     if (autoScroll && streamRef.current) {
-      streamRef.current.scrollTop = streamRef.current.scrollHeight;
+      setIsAutoScrolling(true);
+      streamRef.current.scrollTo({
+        top: streamRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+
+      // Reset auto-scrolling indicator after scroll completes
+      setTimeout(() => {
+        setIsAutoScrolling(false);
+      }, 500);
     }
-  }, [streamUpdates, autoScroll]);
+  }, [streamUpdates, autoScroll, streamingContent]);
+
+  // Additional auto-scroll effect specifically for streaming content changes
+  useEffect(() => {
+    if (
+      autoScroll &&
+      streamRef.current &&
+      Object.keys(streamingContent).length > 0
+    ) {
+      // Check if any content is currently streaming
+      const isCurrentlyStreaming =
+        Object.values(isStreamingContent).some(Boolean);
+      if (isCurrentlyStreaming) {
+        streamRef.current.scrollTo({
+          top: streamRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    }
+  }, [streamingContent, isStreamingContent, autoScroll]);
+
+  // Handle scroll events to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const handleScroll = () => {
+      if (streamRef.current) {
+        const { scrollTop, scrollHeight, clientHeight } = streamRef.current;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+        setShowScrollToBottom(!isNearBottom && isStreaming);
+      }
+    };
+
+    const scrollElement = streamRef.current;
+    if (scrollElement) {
+      scrollElement.addEventListener("scroll", handleScroll);
+      return () => scrollElement.removeEventListener("scroll", handleScroll);
+    }
+  }, [isStreaming]);
 
   // Update duration timer
   useEffect(() => {
@@ -259,6 +323,54 @@ export default function RealTimeAnalysis({
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const scrollToBottom = () => {
+    if (streamRef.current) {
+      streamRef.current.scrollTo({
+        top: streamRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  // Word-by-word streaming function
+  const streamContentWordByWord = (
+    content: string,
+    updateId: string,
+    speed: number = 50
+  ) => {
+    const words = content.split(" ");
+    let currentIndex = 0;
+
+    setIsStreamingContent((prev) => ({ ...prev, [updateId]: true }));
+    setStreamingContent((prev) => ({ ...prev, [updateId]: "" }));
+
+    // Add a small delay before starting to make it more visible
+    setTimeout(() => {
+      const streamInterval = setInterval(() => {
+        if (currentIndex < words.length) {
+          setStreamingContent((prev) => ({
+            ...prev,
+            [updateId]: words.slice(0, currentIndex + 1).join(" "),
+          }));
+          currentIndex++;
+
+          // Force auto-scroll during word-by-word streaming
+          if (autoScroll && streamRef.current) {
+            streamRef.current.scrollTo({
+              top: streamRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }
+        } else {
+          clearInterval(streamInterval);
+          setIsStreamingContent((prev) => ({ ...prev, [updateId]: false }));
+        }
+      }, speed);
+
+      return streamInterval;
+    }, 100); // Small delay to make streaming more visible
   };
 
   const startStreaming = async () => {
@@ -376,7 +488,43 @@ export default function RealTimeAnalysis({
       });
     }
 
-    setStreamUpdates((prev) => [...prev, update]);
+    // Force immediate update to prevent batching
+    setStreamUpdates((prev) => {
+      const newUpdates = [...prev, update];
+      // Force a re-render by creating a new array reference
+      return newUpdates;
+    });
+
+    // Update last update time for real-time indicator
+    setLastUpdateTime(new Date());
+
+    // Start word-by-word streaming for content updates
+    const contentToStream =
+      update.content ||
+      update.observation ||
+      update.reasoning ||
+      update.action_result;
+    if (contentToStream && contentToStream.length > 10) {
+      // Create updateId that matches the rendering logic
+      const updateId = `${update.type}_${
+        update.timestamp
+      }_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      streamContentWordByWord(contentToStream, updateId, 15); // Very fast speed for real-time feel
+    }
+
+    // Force React to flush updates immediately
+    if (typeof window !== "undefined") {
+      // Use multiple techniques to ensure immediate rendering
+      requestAnimationFrame(() => {
+        // Force a re-render
+        setStreamUpdates((current) => [...current]);
+      });
+
+      // Also use setTimeout as backup
+      setTimeout(() => {
+        setStreamUpdates((current) => [...current]);
+      }, 0);
+    }
 
     // Track completion states for loading animations
     if (update.type === "preprocessing_completed") {
@@ -446,6 +594,67 @@ export default function RealTimeAnalysis({
       case "keepalive":
         // Just keep the connection alive
         break;
+
+      // ReAct Agent specific update types
+      case "analysis_started":
+        // Analysis has started
+        break;
+
+      case "iteration_started":
+        // New iteration started
+        break;
+
+      case "observation_completed":
+        // Observation step completed
+        if (update.observation) {
+          // Add observation as a step update
+          const stepUpdate = {
+            ...update,
+            step_type: "OBSERVATION",
+            content: update.observation,
+            step_number: streamUpdates.length + 1,
+          };
+          setStreamUpdates((prev) => [...prev, stepUpdate]);
+        }
+        break;
+
+      case "reasoning_completed":
+        // Reasoning step completed
+        if (update.reasoning) {
+          // Add reasoning as a step update
+          const stepUpdate = {
+            ...update,
+            step_type: "THOUGHT",
+            content: update.reasoning,
+            step_number: streamUpdates.length + 1,
+          };
+          setStreamUpdates((prev) => [...prev, stepUpdate]);
+        }
+        break;
+
+      case "action_completed":
+        // Action step completed
+        if (update.tool_used) {
+          // Add action as a step update
+          const stepUpdate = {
+            ...update,
+            step_type: "ACTION",
+            content: update.action_result || `Executed ${update.tool_used}`,
+            tool_used: update.tool_used,
+            step_number: streamUpdates.length + 1,
+          };
+          setStreamUpdates((prev) => [...prev, stepUpdate]);
+
+          // Add tool to tools used list
+          if (!toolsUsed.includes(update.tool_used)) {
+            setToolsUsed((prev) => [...prev, update.tool_used!]);
+          }
+        }
+        break;
+
+      case "termination_condition_met":
+        // ReAct loop terminating
+        break;
     }
   };
 
@@ -506,7 +715,28 @@ export default function RealTimeAnalysis({
       )}
 
       <div className="flex-1 min-h-0">
-        <div ref={streamRef} className="h-full w-full overflow-y-auto">
+        <div ref={streamRef} className="h-full w-full overflow-y-auto relative">
+          {/* Floating auto-scroll indicator */}
+          {isAutoScrolling && autoScroll && (
+            <div className="absolute bottom-4 right-4 z-10 bg-blue-500 text-white px-3 py-2 rounded-lg shadow-lg flex items-center space-x-2 animate-pulse">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              <span className="text-sm font-medium">Auto-scrolling</span>
+            </div>
+          )}
+
+          {/* Scroll to bottom button */}
+          {showScrollToBottom && (
+            <div className="absolute bottom-4 right-4 z-10">
+              <Button
+                onClick={scrollToBottom}
+                className="bg-blue-500 hover:bg-blue-600 text-white shadow-lg"
+                size="sm"
+              >
+                <ChevronDown className="h-4 w-4 mr-1" />
+                Follow Live
+              </Button>
+            </div>
+          )}
           <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
             {/* Debug Controls */}
             <div className="flex justify-end space-x-2 mb-4">
@@ -546,6 +776,21 @@ export default function RealTimeAnalysis({
                 <p className="text-base text-gray-600">
                   Initializing agent and connecting to analysis stream...
                 </p>
+              </div>
+            )}
+
+            {/* Live indicator */}
+            {isStreaming && lastUpdateTime && (
+              <div className="flex items-center justify-center space-x-2 mb-4 p-2 bg-green-50 border border-green-200 rounded-lg">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-green-700">
+                  Live Updates Active
+                </span>
+                <span className="text-xs text-green-600">
+                  Last update:{" "}
+                  {Math.floor((Date.now() - lastUpdateTime.getTime()) / 1000)}s
+                  ago
+                </span>
               </div>
             )}
 
@@ -819,7 +1064,10 @@ export default function RealTimeAnalysis({
 
             {streamUpdates.map((update, index) => {
               // Handle different update types
-              if (update.type === "step_completed" && update.step_type) {
+              if (
+                (update.type === "step_completed" || update.step_type) &&
+                update.step_type
+              ) {
                 return (
                   <div key={index} className="flex space-x-4 group">
                     {/* Agent Avatar */}
@@ -856,7 +1104,40 @@ export default function RealTimeAnalysis({
                       {/* Content */}
                       <div className="prose prose-gray max-w-none">
                         <p className="text-gray-800 text-[15px] leading-relaxed whitespace-pre-wrap m-0">
-                          {update.content}
+                          {(() => {
+                            // Get the content to display (prioritize streaming content)
+                            const contentToDisplay =
+                              update.content ||
+                              update.observation ||
+                              update.reasoning ||
+                              update.action_result;
+
+                            if (!contentToDisplay) return "";
+
+                            // Find the streaming content by matching the update properties
+                            const streamingKeys = Object.keys(streamingContent);
+                            const matchingKey = streamingKeys.find((key) =>
+                              key.startsWith(
+                                `${update.type}_${update.timestamp}`
+                              )
+                            );
+
+                            if (
+                              matchingKey &&
+                              isStreamingContent[matchingKey]
+                            ) {
+                              const streamedContent =
+                                streamingContent[matchingKey];
+                              return (
+                                <span className="relative">
+                                  {streamedContent}
+                                  <span className="inline-block w-0.5 h-5 bg-blue-500 animate-pulse ml-1"></span>
+                                </span>
+                              );
+                            } else {
+                              return contentToDisplay;
+                            }
+                          })()}
                         </p>
                       </div>
 
@@ -1064,6 +1345,24 @@ export default function RealTimeAnalysis({
                 <div>
                   <span className="font-medium">Is Streaming:</span>{" "}
                   {isStreaming ? "Yes" : "No"}
+                </div>
+                <div>
+                  <span className="font-medium">Real-time Updates:</span>{" "}
+                  {lastUpdateTime ? (
+                    <span className="flex items-center space-x-2">
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <span>Active</span>
+                      <span className="text-xs text-gray-500">
+                        (
+                        {Math.floor(
+                          (Date.now() - lastUpdateTime.getTime()) / 1000
+                        )}
+                        s ago)
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">None</span>
+                  )}
                 </div>
                 <div>
                   <span className="font-medium">Current Phase:</span>{" "}
